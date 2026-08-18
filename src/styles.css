@@ -760,13 +760,12 @@ img {
 
 .boot-quote {
   position: absolute;
-  max-width: min(26rem, 46vw);
   margin: 0;
-  padding: 0 0.6rem;
+  padding: 0 0.45rem;
+  overflow: hidden;
   color: rgba(255, 255, 255, 0.26);
   text-align: left;
   opacity: 0;
-  transform: translate(-50%, -50%);
   transition: opacity 1.15s ease;
 }
 
