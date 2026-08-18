@@ -492,14 +492,42 @@ function bindVideo() {
   syncFromScroll();
 }
 
+function attachRemote(src) {
+  bootStatus.textContent = "Loading…";
+  video.preload = "auto";
+  video.src = src;
+  video.load();
+  return new Promise((resolve, reject) => {
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Video decode failed"));
+    };
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onReady);
+      video.removeEventListener("error", onError);
+    };
+    video.addEventListener("loadedmetadata", onReady, { once: true });
+    video.addEventListener("error", onError, { once: true });
+  });
+}
+
 async function start() {
   renderStaticContent();
   setupMedalPhysics();
   setupAudio();
   try {
-    const blob = await loadVideoAsBlob(VIDEO_SRC);
-    bootStatus.textContent = "Decoding…";
-    await attachSource(blob);
+    const isRemote = /^https?:\/\//i.test(VIDEO_SRC);
+    if (isRemote) {
+      await attachRemote(VIDEO_SRC);
+    } else {
+      const blob = await loadVideoAsBlob(VIDEO_SRC);
+      bootStatus.textContent = "Decoding…";
+      await attachSource(blob);
+    }
     bindVideo();
   } catch (error) {
     console.error(error);
