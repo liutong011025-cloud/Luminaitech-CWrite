@@ -246,9 +246,7 @@ const video = document.querySelector("#hero-video");
 const boot = document.querySelector("#boot");
 const bootStatus = document.querySelector("#boot-status");
 const bootProgressFill = document.querySelector("#boot-progress-fill");
-const bootQuote = document.querySelector("#boot-quote");
-const bootQuoteText = document.querySelector("#boot-quote-text");
-const bootQuoteAuthor = document.querySelector("#boot-quote-author");
+const bootQuotes = document.querySelector("#boot-quotes");
 const scrollCue = document.querySelector("#scroll-cue");
 const muteBtn = document.querySelector("#mute-btn");
 const muteIcon = document.querySelector("#mute-icon");
@@ -266,8 +264,9 @@ let objectUrl = "";
 let bgm = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
 let quoteTimer = 0;
-let quoteHideTimer = 0;
+let quoteHideTimers = [];
 let quoteIndex = Math.floor(Math.random() * LOADING_QUOTES.length);
+const occupiedQuoteCells = new Set();
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -279,61 +278,79 @@ function setBootProgress(percent, label) {
   if (bootProgressFill) bootProgressFill.style.width = `${pct}%`;
 }
 
-function placeBootQuote() {
-  if (!bootQuote) return;
-  const sizes = ["is-sm", "is-md", "is-lg"];
-  bootQuote.classList.remove("is-sm", "is-md", "is-lg");
-  bootQuote.classList.add(sizes[Math.floor(Math.random() * sizes.length)]);
-  const side = Math.floor(Math.random() * 4);
-  if (side === 0) {
-    bootQuote.style.top = `${8 + Math.random() * 14}%`;
-    bootQuote.style.left = `${8 + Math.random() * 28}%`;
-    bootQuote.style.right = "auto";
-    bootQuote.style.bottom = "auto";
-  } else if (side === 1) {
-    bootQuote.style.top = `${8 + Math.random() * 14}%`;
-    bootQuote.style.right = `${8 + Math.random() * 28}%`;
-    bootQuote.style.left = "auto";
-    bootQuote.style.bottom = "auto";
-  } else if (side === 2) {
-    bootQuote.style.bottom = `${10 + Math.random() * 16}%`;
-    bootQuote.style.left = `${8 + Math.random() * 28}%`;
-    bootQuote.style.top = "auto";
-    bootQuote.style.right = "auto";
-  } else {
-    bootQuote.style.bottom = `${10 + Math.random() * 16}%`;
-    bootQuote.style.right = `${8 + Math.random() * 28}%`;
-    bootQuote.style.top = "auto";
-    bootQuote.style.left = "auto";
-  }
+function randomBetween(min, max) {
+  return min + Math.random() * (max - min);
 }
 
-function showNextQuote() {
-  if (!bootQuote || !bootQuoteText || boot.classList.contains("is-done")) return;
+function pickQuoteCell() {
+  const cols = 4;
+  const rows = 4;
+  const free = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const isCenter = row >= 1 && row <= 2 && col >= 1 && col <= 2;
+      if (isCenter) continue;
+      const key = `${row}-${col}`;
+      if (!occupiedQuoteCells.has(key)) free.push({ row, col, key });
+    }
+  }
+  if (!free.length) return null;
+  return free[Math.floor(Math.random() * free.length)];
+}
+
+function spawnBootQuote() {
+  if (!bootQuotes || boot.classList.contains("is-done")) return;
+  const cell = pickQuoteCell();
+  if (!cell) return;
+
   const quote = LOADING_QUOTES[quoteIndex % LOADING_QUOTES.length];
   quoteIndex += 1;
-  bootQuote.classList.remove("is-on");
-  placeBootQuote();
-  bootQuoteText.textContent = `“${quote.text}”`;
-  if (bootQuoteAuthor) bootQuoteAuthor.textContent = `— ${quote.author}`;
-  requestAnimationFrame(() => bootQuote.classList.add("is-on"));
-  window.clearTimeout(quoteHideTimer);
-  quoteHideTimer = window.setTimeout(() => {
-    bootQuote.classList.remove("is-on");
-  }, REDUCED_MOTION ? 4000 : 4200);
+  occupiedQuoteCells.add(cell.key);
+
+  const sizes = ["is-xs", "is-sm", "is-md", "is-lg", "is-xl"];
+  const el = document.createElement("blockquote");
+  el.className = `boot-quote ${sizes[Math.floor(Math.random() * sizes.length)]}`;
+  el.style.top = `${(cell.row / 4) * 100 + randomBetween(2, 8)}%`;
+  el.style.left = `${(cell.col / 4) * 100 + randomBetween(1.5, 6)}%`;
+  el.style.width = `${18 + Math.random() * 8}%`;
+  el.innerHTML = `<p>${escapeHtml(`“${quote.text}”`)}</p><cite>— ${escapeHtml(quote.author)}</cite>`;
+  bootQuotes.append(el);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => el.classList.add("is-on"));
+  });
+
+  const visibleFor = REDUCED_MOTION ? 4200 : randomBetween(3800, 7200);
+  const hideId = window.setTimeout(() => {
+    el.classList.remove("is-on");
+    const removeId = window.setTimeout(() => {
+      el.remove();
+      occupiedQuoteCells.delete(cell.key);
+    }, REDUCED_MOTION ? 0 : 1200);
+    quoteHideTimers.push(removeId);
+  }, visibleFor);
+  quoteHideTimers.push(hideId);
 }
 
 function startBootQuotes() {
-  if (!bootQuote) return;
-  showNextQuote();
-  window.clearInterval(quoteTimer);
-  quoteTimer = window.setInterval(showNextQuote, REDUCED_MOTION ? 5000 : 5600);
+  if (!bootQuotes) return;
+  stopBootQuotes();
+  const initial = REDUCED_MOTION ? 4 : 7;
+  for (let i = 0; i < initial; i += 1) {
+    const id = window.setTimeout(spawnBootQuote, i * (REDUCED_MOTION ? 80 : 220));
+    quoteHideTimers.push(id);
+  }
+  quoteTimer = window.setInterval(() => {
+    if (occupiedQuoteCells.size < 12) spawnBootQuote();
+  }, REDUCED_MOTION ? 1400 : 520);
 }
 
 function stopBootQuotes() {
   window.clearInterval(quoteTimer);
-  window.clearTimeout(quoteHideTimer);
-  bootQuote?.classList.remove("is-on");
+  quoteHideTimers.forEach((id) => window.clearTimeout(id));
+  quoteHideTimers = [];
+  occupiedQuoteCells.clear();
+  bootQuotes?.replaceChildren();
 }
 
 function escapeHtml(text) {
