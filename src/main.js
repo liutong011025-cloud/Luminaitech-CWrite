@@ -9,7 +9,8 @@ const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").mat
  */
 const FPS = 120;
 const SOURCE_FRAME_COUNT = 5408;
-const LERP = REDUCED_MOTION ? 1 : 0.4;
+const SCRUB_FPS = 20;
+const LERP = REDUCED_MOTION ? 1 : 0.55;
 
 const FEATURES = [
   {
@@ -251,15 +252,16 @@ function flushSeek() {
   if (!duration || pendingTime < 0 || seeking) return;
   const time = pendingTime;
   const delta = Math.abs(time - displayedTime);
-  // 快滚合并到 2～3 帧一步，降低解码压力；慢滚逐步贴近
-  const step = delta > 8 / FPS ? 3 : delta > 3 / FPS ? 2 : 1;
+  const minStep = Math.max(1, Math.round(FPS / SCRUB_FPS));
+  const step =
+    delta > 0.35 ? minStep * 4 : delta > 0.12 ? minStep * 2 : minStep;
   const frame = Math.round((time * FPS) / step) * step;
   const seekTime = clamp(frame / FPS, 0, Math.max(0, duration - 1 / FPS));
   if (frame === lastQueuedFrame && delta < step / FPS) {
     pendingTime = -1;
     return;
   }
-  if (Math.abs(displayedTime - seekTime) < 1 / (FPS * 2)) {
+  if (Math.abs(displayedTime - seekTime) < 1 / SCRUB_FPS) {
     pendingTime = -1;
     return;
   }
@@ -275,7 +277,7 @@ function flushSeek() {
 function onSeeked() {
   displayedTime = video.currentTime;
   seeking = false;
-  if (pendingTime >= 0 && Math.abs(pendingTime - displayedTime) > 1 / (FPS * 2)) {
+  if (pendingTime >= 0 && Math.abs(pendingTime - displayedTime) > 1 / SCRUB_FPS) {
     flushSeek();
   } else {
     pendingTime = -1;
@@ -329,7 +331,7 @@ function frame() {
 
 async function loadVideoAsBlob(src) {
   bootStatus.textContent = "Loading 0%";
-  const response = await fetch(src);
+  const response = await fetch(src, { mode: "cors", credentials: "omit" });
   if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
   const total = Number(response.headers.get("content-length")) || 0;
   if (!response.body) return response.blob();
@@ -492,42 +494,14 @@ function bindVideo() {
   syncFromScroll();
 }
 
-function attachRemote(src) {
-  bootStatus.textContent = "Loading…";
-  video.preload = "auto";
-  video.src = src;
-  video.load();
-  return new Promise((resolve, reject) => {
-    const onReady = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error("Video decode failed"));
-    };
-    const cleanup = () => {
-      video.removeEventListener("loadedmetadata", onReady);
-      video.removeEventListener("error", onError);
-    };
-    video.addEventListener("loadedmetadata", onReady, { once: true });
-    video.addEventListener("error", onError, { once: true });
-  });
-}
-
 async function start() {
   renderStaticContent();
   setupMedalPhysics();
   setupAudio();
   try {
-    const isRemote = /^https?:\/\//i.test(VIDEO_SRC);
-    if (isRemote) {
-      await attachRemote(VIDEO_SRC);
-    } else {
-      const blob = await loadVideoAsBlob(VIDEO_SRC);
-      bootStatus.textContent = "Decoding…";
-      await attachSource(blob);
-    }
+    const blob = await loadVideoAsBlob(VIDEO_SRC);
+    bootStatus.textContent = "Decoding…";
+    await attachSource(blob);
     bindVideo();
   } catch (error) {
     console.error(error);
