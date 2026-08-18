@@ -327,7 +327,7 @@ function spawnBootQuote() {
     requestAnimationFrame(() => el.classList.add("is-on"));
   });
 
-  const visibleFor = REDUCED_MOTION ? 9000 : randomBetween(10000, 16000);
+  const visibleFor = REDUCED_MOTION ? 4500 : randomBetween(4500, 7000);
   const hideId = window.setTimeout(() => {
     el.classList.remove("is-on");
     const removeId = window.setTimeout(() => {
