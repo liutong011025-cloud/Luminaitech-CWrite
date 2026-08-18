@@ -3,6 +3,88 @@ const VIDEO_SRC = import.meta.env.VITE_VIDEO_SRC || "/hero-scrub.mp4";
 const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
 const MUTE_KEY = "cwrite-home-muted";
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const LOADING_QUOTES = [
+  {
+    text: "You can’t use up creativity. The more you use, the more you have.",
+    author: "Maya Angelou",
+  },
+  {
+    text: "Creativity is intelligence having fun.",
+    author: "Albert Einstein",
+  },
+  {
+    text: "We do not need magic to change the world; we carry all the power we need inside ourselves already. We have the power to imagine better.",
+    author: "J.K. Rowling",
+  },
+  {
+    text: "You can make anything by writing.",
+    author: "C.S. Lewis",
+  },
+  {
+    text: "The scariest moment is always just before you start. After that, things can only get better.",
+    author: "Stephen King",
+  },
+  {
+    text: "Start writing, no matter what. The water does not flow until the faucet is turned on.",
+    author: "Louis L’Amour",
+  },
+  {
+    text: "You can’t wait for inspiration. You have to go after it with a club.",
+    author: "Jack London",
+  },
+  {
+    text: "Inspiration exists, but it has to find you working.",
+    author: "Pablo Picasso",
+  },
+  {
+    text: "Writing is like driving at night in the fog. You can only see as far as your headlights, but you can make the whole trip that way.",
+    author: "E.L. Doctorow",
+  },
+  {
+    text: "The first draft is just you telling yourself the story.",
+    author: "Terry Pratchett",
+  },
+  {
+    text: "Almost all good writing begins with terrible first efforts. You need to start somewhere.",
+    author: "Anne Lamott",
+  },
+  {
+    text: "There is nothing to writing. All you do is sit down at the typewriter and bleed.",
+    author: "Ernest Hemingway",
+  },
+  {
+    text: "We are all apprentices in a craft where no one ever becomes a master.",
+    author: "Ernest Hemingway",
+  },
+  {
+    text: "If you don't have time to read, you don't have the time (or the tools) to write. Simple as that.",
+    author: "Stephen King",
+  },
+  {
+    text: "If there’s a book that you want to read, but it hasn’t been written yet, then you must write it.",
+    author: "Toni Morrison",
+  },
+  {
+    text: "There is no greater agony than bearing an untold story inside you.",
+    author: "Maya Angelou",
+  },
+  {
+    text: "Write what should not be forgotten.",
+    author: "Isabel Allende",
+  },
+  {
+    text: "Stories have to be told or they die, and when they die, we can't remember who we are or why we're here.",
+    author: "Sue Monk Kidd",
+  },
+  {
+    text: "You don’t write because you want to say something; you write because you have something to say.",
+    author: "F. Scott Fitzgerald",
+  },
+  {
+    text: "The worst enemy to creativity is self-doubt.",
+    author: "Sylvia Plath",
+  },
+];
 /**
  * 原片 8K → 3840 宽 / 120fps 全 I 帧 + fastdecode：
  * 网页端最高可用清晰度，并保持滚动跟手。不加锐化。
@@ -163,6 +245,10 @@ const intro = document.querySelector("#intro");
 const video = document.querySelector("#hero-video");
 const boot = document.querySelector("#boot");
 const bootStatus = document.querySelector("#boot-status");
+const bootProgressFill = document.querySelector("#boot-progress-fill");
+const bootQuote = document.querySelector("#boot-quote");
+const bootQuoteText = document.querySelector("#boot-quote-text");
+const bootQuoteAuthor = document.querySelector("#boot-quote-author");
 const scrollCue = document.querySelector("#scroll-cue");
 const muteBtn = document.querySelector("#mute-btn");
 const muteIcon = document.querySelector("#mute-icon");
@@ -179,9 +265,75 @@ let rafId = 0;
 let objectUrl = "";
 let bgm = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
+let quoteTimer = 0;
+let quoteHideTimer = 0;
+let quoteIndex = Math.floor(Math.random() * LOADING_QUOTES.length);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function setBootProgress(percent, label) {
+  const pct = clamp(Math.round(percent), 0, 100);
+  if (bootStatus) bootStatus.textContent = label ?? `${pct}%`;
+  if (bootProgressFill) bootProgressFill.style.width = `${pct}%`;
+}
+
+function placeBootQuote() {
+  if (!bootQuote) return;
+  const sizes = ["is-sm", "is-md", "is-lg"];
+  bootQuote.classList.remove("is-sm", "is-md", "is-lg");
+  bootQuote.classList.add(sizes[Math.floor(Math.random() * sizes.length)]);
+  const side = Math.floor(Math.random() * 4);
+  if (side === 0) {
+    bootQuote.style.top = `${8 + Math.random() * 14}%`;
+    bootQuote.style.left = `${8 + Math.random() * 28}%`;
+    bootQuote.style.right = "auto";
+    bootQuote.style.bottom = "auto";
+  } else if (side === 1) {
+    bootQuote.style.top = `${8 + Math.random() * 14}%`;
+    bootQuote.style.right = `${8 + Math.random() * 28}%`;
+    bootQuote.style.left = "auto";
+    bootQuote.style.bottom = "auto";
+  } else if (side === 2) {
+    bootQuote.style.bottom = `${10 + Math.random() * 16}%`;
+    bootQuote.style.left = `${8 + Math.random() * 28}%`;
+    bootQuote.style.top = "auto";
+    bootQuote.style.right = "auto";
+  } else {
+    bootQuote.style.bottom = `${10 + Math.random() * 16}%`;
+    bootQuote.style.right = `${8 + Math.random() * 28}%`;
+    bootQuote.style.top = "auto";
+    bootQuote.style.left = "auto";
+  }
+}
+
+function showNextQuote() {
+  if (!bootQuote || !bootQuoteText || boot.classList.contains("is-done")) return;
+  const quote = LOADING_QUOTES[quoteIndex % LOADING_QUOTES.length];
+  quoteIndex += 1;
+  bootQuote.classList.remove("is-on");
+  placeBootQuote();
+  bootQuoteText.textContent = `“${quote.text}”`;
+  if (bootQuoteAuthor) bootQuoteAuthor.textContent = `— ${quote.author}`;
+  requestAnimationFrame(() => bootQuote.classList.add("is-on"));
+  window.clearTimeout(quoteHideTimer);
+  quoteHideTimer = window.setTimeout(() => {
+    bootQuote.classList.remove("is-on");
+  }, REDUCED_MOTION ? 4000 : 4200);
+}
+
+function startBootQuotes() {
+  if (!bootQuote) return;
+  showNextQuote();
+  window.clearInterval(quoteTimer);
+  quoteTimer = window.setInterval(showNextQuote, REDUCED_MOTION ? 5000 : 5600);
+}
+
+function stopBootQuotes() {
+  window.clearInterval(quoteTimer);
+  window.clearTimeout(quoteHideTimer);
+  bootQuote?.classList.remove("is-on");
 }
 
 function escapeHtml(text) {
@@ -330,7 +482,7 @@ function frame() {
 }
 
 async function loadVideoAsBlob(src) {
-  bootStatus.textContent = "Loading 0%";
+  setBootProgress(0);
   const response = await fetch(src, { mode: "cors", credentials: "omit" });
   if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
   const total = Number(response.headers.get("content-length")) || 0;
@@ -344,12 +496,13 @@ async function loadVideoAsBlob(src) {
     if (done) break;
     chunks.push(value);
     received += value.byteLength;
-    bootStatus.textContent =
-      total > 0
-        ? `Loading ${Math.min(100, Math.round((received / total) * 100))}%`
-        : `Loading ${(received / (1024 * 1024)).toFixed(0)}MB`;
+    if (total > 0) {
+      setBootProgress(Math.min(100, (received / total) * 100));
+    } else {
+      setBootProgress(0, `${(received / (1024 * 1024)).toFixed(0)} MB`);
+    }
   }
-  bootStatus.textContent = "Loading 100%";
+  setBootProgress(100);
   return new Blob(chunks, { type: "video/mp4" });
 }
 
@@ -490,6 +643,7 @@ function bindVideo() {
   window.addEventListener("scroll", () => syncFromScroll(), { passive: true });
   window.addEventListener("resize", () => syncFromScroll());
   rafId = requestAnimationFrame(frame);
+  stopBootQuotes();
   boot.classList.add("is-done");
   syncFromScroll();
 }
@@ -498,14 +652,16 @@ async function start() {
   renderStaticContent();
   setupMedalPhysics();
   setupAudio();
+  startBootQuotes();
   try {
     const blob = await loadVideoAsBlob(VIDEO_SRC);
-    bootStatus.textContent = "Decoding…";
+    setBootProgress(100, "Decoding…");
     await attachSource(blob);
     bindVideo();
   } catch (error) {
     console.error(error);
-    bootStatus.textContent = "Video failed to load";
+    stopBootQuotes();
+    setBootProgress(0, "Failed");
   }
 }
 
