@@ -1,1292 +1,710 @@
-:root {
-  --ink: #0f172a;
-  --paper: #f8fafc;
-  --blue-deep: #0d47a1;
-  --blue-mid: #1565c0;
-  --blue-bright: #1e88e5;
-  --accent-lime: #e8ff72;
-  --dot-intro: #94a3b8;
-  --dot-vision: #f0abfc;
-  --dot-team: #67e8f9;
-  --dot-awards: #fbbf24;
-  --dot-partnerships: #86efac;
-  --scrub-vh: 900vh;
-  --header-pad: clamp(0.85rem, 2vw, 1.25rem);
-  color-scheme: dark;
+// 本地用 /hero-scrub.mp4；上线把大视频放到 CDN/对象存储，在 Vercel 配 VITE_VIDEO_SRC
+const VIDEO_SRC = import.meta.env.VITE_VIDEO_SRC || "/hero-scrub.mp4";
+const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
+const MUTE_KEY = "cwrite-home-muted";
+const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const LOADING_QUOTES = [
+  {
+    text: "You can’t use up creativity. The more you use, the more you have.",
+    author: "Maya Angelou",
+  },
+  {
+    text: "Creativity is intelligence having fun.",
+    author: "Albert Einstein",
+  },
+  {
+    text: "We do not need magic to change the world; we carry all the power we need inside ourselves already. We have the power to imagine better.",
+    author: "J.K. Rowling",
+  },
+  {
+    text: "You can make anything by writing.",
+    author: "C.S. Lewis",
+  },
+  {
+    text: "The scariest moment is always just before you start. After that, things can only get better.",
+    author: "Stephen King",
+  },
+  {
+    text: "Start writing, no matter what. The water does not flow until the faucet is turned on.",
+    author: "Louis L’Amour",
+  },
+  {
+    text: "You can’t wait for inspiration. You have to go after it with a club.",
+    author: "Jack London",
+  },
+  {
+    text: "Inspiration exists, but it has to find you working.",
+    author: "Pablo Picasso",
+  },
+  {
+    text: "Writing is like driving at night in the fog. You can only see as far as your headlights, but you can make the whole trip that way.",
+    author: "E.L. Doctorow",
+  },
+  {
+    text: "The first draft is just you telling yourself the story.",
+    author: "Terry Pratchett",
+  },
+  {
+    text: "Almost all good writing begins with terrible first efforts. You need to start somewhere.",
+    author: "Anne Lamott",
+  },
+  {
+    text: "There is nothing to writing. All you do is sit down at the typewriter and bleed.",
+    author: "Ernest Hemingway",
+  },
+  {
+    text: "We are all apprentices in a craft where no one ever becomes a master.",
+    author: "Ernest Hemingway",
+  },
+  {
+    text: "If you don't have time to read, you don't have the time (or the tools) to write. Simple as that.",
+    author: "Stephen King",
+  },
+  {
+    text: "If there’s a book that you want to read, but it hasn’t been written yet, then you must write it.",
+    author: "Toni Morrison",
+  },
+  {
+    text: "There is no greater agony than bearing an untold story inside you.",
+    author: "Maya Angelou",
+  },
+  {
+    text: "Write what should not be forgotten.",
+    author: "Isabel Allende",
+  },
+  {
+    text: "Stories have to be told or they die, and when they die, we can't remember who we are or why we're here.",
+    author: "Sue Monk Kidd",
+  },
+  {
+    text: "You don’t write because you want to say something; you write because you have something to say.",
+    author: "F. Scott Fitzgerald",
+  },
+  {
+    text: "The worst enemy to creativity is self-doubt.",
+    author: "Sylvia Plath",
+  },
+];
+/**
+ * 原片 8K → 3840 宽 / 120fps 全 I 帧 + fastdecode：
+ * 网页端最高可用清晰度，并保持滚动跟手。不加锐化。
+ */
+const FPS = 120;
+const SOURCE_FRAME_COUNT = 5408;
+const SCRUB_FPS = 20;
+
+const FEATURES = [
+  {
+    title: "AI Writing Partner",
+    description: "Get real-time feedback and suggestions as you write, tailored to your goals",
+  },
+  {
+    title: "Self-Regulated Learning",
+    description: "Take control of your learning journey with structured guidance and reflection",
+  },
+  {
+    title: "Collaborative Tools",
+    description: "Share work, get peer feedback, and learn from other writers in the community",
+  },
+  {
+    title: "Progress Analytics",
+    description: "Track your improvement over time with detailed insights into your writing patterns",
+  },
+];
+
+const METHODS = [
+  {
+    title: "Adaptive Feedback",
+    items: ["Real-time suggestions", "Personalized guidance", "Learning-focused insights"],
+  },
+  {
+    title: "Smart Analysis",
+    items: ["Writing pattern detection", "Strength identification", "Growth opportunities"],
+  },
+  {
+    title: "Community Learning",
+    items: ["Peer collaboration", "Shared resources", "Collective growth"],
+  },
+];
+
+const VALUES = [
+  "Perseverance",
+  "Respect for Others",
+  "Responsibility",
+  "National Identity",
+  "Commitment",
+  "Integrity",
+  "Benevolence",
+  "Law-abidingness",
+  "Empathy",
+  "Diligence",
+  "Filial Piety",
+  "Unity",
+];
+
+const TEAM_TOP = [
+  {
+    name: "Dr. YANG, Yin Nicole (PhD)",
+    role: "Principal Investigator",
+    subtitle: "Research Assistant Professor",
+    image: "/about/Nicole.webp",
+    bio: [
+      "Dr Yang is an interdisciplinary researcher of cognitive science, language education, and educational technology. Her work bridges multiple disciplines, leveraging her diverse academic background to explore innovative approaches to teaching and learning in technology-enhanced environments. Drawing upon contemporary cognitive science and learning theories, her research explores the intersection of human cognition, AI, and instructional design to understand and enhance how people learn.",
+      "Her interdisciplinary research advances emerging technology-driven education, with a focus on (1) AI-powered creative language learning systems that support metacognitive strategies through emerging technologies. (2) cognitive mechanisms that drive human-computer collaboration; and (3) innovative learning design that integrates insights from cognition and technology to optimize learning outcomes.",
+    ],
+  },
+  {
+    name: "Prof. LEE, Chi Kin John, JP (PhD)",
+    role: "Co-Principal Investigator & Advisor",
+    subtitle: "Chair Professor of Curriculum and Instruction",
+    image: "/about/john.webp",
+    bio: [
+      "Professor John Lee Chi-Kin, President and Chair Professor of Curriculum and Instruction, joined The Education University of Hong Kong (the then Hong Kong Institute of Education) in 2010. He was Vice President (Academic) from 2010 to 2019, and Vice President (Academic) and Provost from 2019 to 2023.",
+      "His research expertise spans curriculum and instruction, teacher development, school improvement, life and values education, geographical and environmental education, educational leadership, sustainability education, and policy-oriented educational innovation. He is a prolific writer, having edited and written more than 25 books, and published over 175 journal articles and book chapters.",
+    ],
+  },
+];
+
+const TEAM_BOTTOM = [
+  {
+    name: "Prof. GU, Ming Yue Michelle (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Professor, Assistant Vice President (Research)",
+    image: "/about/apple.webp",
+    bio: [
+      "Professor Michelle Gu Mingyue is Assistant Vice President (Research) and Professor in the Department of English Language Education at The Education University of Hong Kong. She is a distinguished scholar in sociolinguistics and language education, internationally recognised for her interdisciplinary research on language, identity, multilingualism, and digital literacies.",
+    ],
+  },
+  {
+    name: "Prof. CHIU, Ming Ming (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Chair Professor of Analytics and Diversity",
+    image: "/about/CHIU,%20Ming%20Ming.png",
+    bio: [
+      "Professor Chiu is an analytics expert, integrating statistics, computer science and mathematics to develop theories and test them in diverse fields, including education, psychology, sociology, linguistics, criminology, economics, and management. He invented an artificial intelligence expert system, Statistician, and statistical methods recognised by the International Society for the Learning Sciences.",
+    ],
+  },
+  {
+    name: "Prof. WEN Yun (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Associate Professor, NIE NTU Singapore",
+    image: "/about/Wen%20Yun.png",
+    bio: [
+      "Dr Wen Yun is a learning sciences researcher advancing technology-enhanced learning innovations in schools. Her research investigates how people learn through interaction and conversations in multimodal environments, and how to use emerging technologies such as AR or AI to spark productive interactions and enhance learning.",
+    ],
+  },
+  {
+    name: "Prof. MA, Qing Angel (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Professor of Linguistics and Modern Language Studies",
+    image: "/about/MA,%20Qing%20Ange.png",
+    bio: [
+      "Professor Angel Ma Qing currently serves as Associate Dean (Research and Postgraduate Studies) at the Faculty of Humanities, EdUHK. Her main research interests include second language vocabulary acquisition, corpus linguistics, corpus-based language pedagogy, CALL, MALL, and AI in language education.",
+    ],
+  },
+  {
+    name: "Prof. KONG, Siu Cheung (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Chair Professor of Mathematics and Information Technology",
+    image: "/about/kongsiucheung.png",
+    bio: [
+      "Professor Kong Siu-cheung is Chair Professor at the Department of Mathematics and Information Technology and Director of the Artificial Intelligence and Digital Competency Education Centre at EdUHK. He has been named on the Stanford list of the world's Top 2% Scientists in Education since 2019.",
+    ],
+  },
+  {
+    name: "Dr. Ling Man Ho Alpha (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Assistant Professor of Mathematics and Information Technology",
+    image: "/about/Ling%20Man%20Ho%20Alpha.png",
+    bio: [
+      "Dr. Alpha Ling Man Ho is Associate Professor in the Department of Mathematics and Information Technology at EdUHK. He is internationally recognized for specialized research on one-shot device testing, degradation data analysis, and statistical inference under censoring.",
+    ],
+  },
+  {
+    name: "Dr. WONG, Ming Har Ruth (PhD)",
+    role: "Co-Investigator",
+    subtitle: "Associate Head of Department, Assistant Professor",
+    image: "/about/ruth.webp",
+    bio: [
+      "Dr. Wong Ming Har (Ruth) is an Assistant Professor and Associate Head of the Department of English Language Education at EdUHK. Her research focuses on EFL learning motivation, learner autonomy, and teacher training.",
+    ],
+  },
+  {
+    name: "Mr. LIU, Tong Tony",
+    role: "Research Assistant",
+    subtitle: "Graduate of AI & Educational Technology, EdUHK",
+    image: "/about/Tony.webp",
+    bio: [
+      "Graduate of AI & Educational Technology, EdUHK. Research interests in AI and design, robotics automation, and STEM.",
+    ],
+  },
+];
+
+const intro = document.querySelector("#intro");
+const video = document.querySelector("#hero-video");
+const boot = document.querySelector("#boot");
+const bootStatus = document.querySelector("#boot-status");
+const bootProgressFill = document.querySelector("#boot-progress-fill");
+const bootQuotes = document.querySelector("#boot-quotes");
+const scrollCue = document.querySelector("#scroll-cue");
+const muteBtn = document.querySelector("#mute-btn");
+const muteIcon = document.querySelector("#mute-icon");
+const navItems = [...document.querySelectorAll(".nav-item")];
+
+let duration = 0;
+let frameCount = 0;
+let seeking = false;
+let pendingTime = -1;
+let displayedTime = 0;
+let displayProgress = 0;
+let scrubVelocity = 0;
+let ready = false;
+let rafId = 0;
+let objectUrl = "";
+let bgm = null;
+let isMuted = localStorage.getItem(MUTE_KEY) === "true";
+let quoteTimer = 0;
+let quoteHideTimers = [];
+let quoteIndex = Math.floor(Math.random() * LOADING_QUOTES.length);
+const occupiedQuoteCells = new Set();
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+function setBootProgress(percent, label) {
+  const pct = clamp(Math.round(percent), 0, 100);
+  if (bootStatus) bootStatus.textContent = label ?? `${pct}%`;
+  if (bootProgressFill) bootProgressFill.style.width = `${pct}%`;
 }
 
-html {
-  scroll-behavior: smooth;
+function randomBetween(min, max) {
+  return min + Math.random() * (max - min);
 }
 
-body {
-  margin: 0;
-  font-family: "Manrope", system-ui, sans-serif;
-  background: #000;
-  color: var(--paper);
-  overflow-x: hidden;
+const QUOTE_SLOTS = [
+  { left: 3, top: 5, width: 28, height: 20, size: "is-md" },
+  { left: 36, top: 3, width: 28, height: 16, size: "is-sm" },
+  { left: 69, top: 5, width: 28, height: 20, size: "is-md" },
+  { left: 2, top: 30, width: 22, height: 18, size: "is-sm" },
+  { left: 76, top: 30, width: 22, height: 18, size: "is-sm" },
+  { left: 2, top: 52, width: 22, height: 16, size: "is-xs" },
+  { left: 76, top: 52, width: 22, height: 16, size: "is-xs" },
+  { left: 3, top: 74, width: 28, height: 22, size: "is-lg" },
+  { left: 36, top: 78, width: 28, height: 18, size: "is-sm" },
+  { left: 69, top: 74, width: 28, height: 22, size: "is-lg" },
+];
+
+function pickQuoteSlot() {
+  const free = [];
+  QUOTE_SLOTS.forEach((slot, index) => {
+    if (!occupiedQuoteCells.has(String(index))) free.push(index);
+  });
+  if (!free.length) return null;
+  return free[Math.floor(Math.random() * free.length)];
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+function spawnBootQuote() {
+  if (!bootQuotes || boot.classList.contains("is-done")) return;
+  const slotIndex = pickQuoteSlot();
+  if (slotIndex === null) return;
+
+  const slot = QUOTE_SLOTS[slotIndex];
+  const quote = LOADING_QUOTES[quoteIndex % LOADING_QUOTES.length];
+  quoteIndex += 1;
+  occupiedQuoteCells.add(String(slotIndex));
+
+  const el = document.createElement("blockquote");
+  el.className = `boot-quote ${slot.size}`;
+  el.style.left = `${slot.left}%`;
+  el.style.top = `${slot.top}%`;
+  el.style.width = `${slot.width}%`;
+  el.style.height = `${slot.height}%`;
+  el.innerHTML = `<p>${escapeHtml(`“${quote.text}”`)}</p><cite>— ${escapeHtml(quote.author)}</cite>`;
+  bootQuotes.append(el);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => el.classList.add("is-on"));
+  });
+
+  const visibleFor = REDUCED_MOTION ? 9000 : randomBetween(10000, 16000);
+  const hideId = window.setTimeout(() => {
+    el.classList.remove("is-on");
+    const removeId = window.setTimeout(() => {
+      el.remove();
+      occupiedQuoteCells.delete(String(slotIndex));
+    }, REDUCED_MOTION ? 0 : 1200);
+    quoteHideTimers.push(removeId);
+  }, visibleFor);
+  quoteHideTimers.push(hideId);
 }
 
-img {
-  max-width: 100%;
-  display: block;
-}
-
-/* —— Header glass —— */
-.site-header {
-  position: fixed;
-  top: var(--header-pad);
-  right: var(--header-pad);
-  z-index: 60;
-  pointer-events: none;
-}
-
-.header-glass {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: row;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 0.2rem;
-  width: max-content;
-  max-width: calc(100vw - 2rem);
-  padding: 0.4rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(40px) saturate(160%);
-  -webkit-backdrop-filter: blur(40px) saturate(160%);
-  box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.28);
-}
-
-.nav-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.62rem 0.95rem;
-  border-radius: 999px;
-  font-size: 0.86rem;
-  font-weight: 700;
-  white-space: nowrap;
-  color: rgba(255, 255, 255, 0.88);
-  transition: background 0.2s ease, color 0.2s ease;
-}
-
-.header-logo {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  height: 3.35rem;
-  margin: 0 0.35rem 0 0.35rem;
-  padding: 0.2rem 0.45rem;
-  border-radius: 0.7rem;
-  overflow: hidden;
-}
-
-.header-logo img {
-  width: auto;
-  height: 2.85rem;
-  object-fit: contain;
-}
-
-.nav-item--visit {
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-.nav-item:hover,
-.nav-item.is-active {
-  background: rgba(15, 23, 42, 0.45);
-  color: #fff;
-}
-
-.nav-dot {
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.nav-dot--intro {
-  background: var(--dot-intro);
-}
-
-.nav-dot--vision {
-  background: var(--dot-vision);
-}
-
-.nav-dot--team {
-  background: var(--dot-team);
-}
-
-.nav-dot--awards {
-  background: var(--dot-awards);
-}
-
-.nav-dot--partnerships {
-  background: var(--dot-partnerships);
-}
-
-/* —— Intro scrub —— */
-.scrub-section {
-  position: relative;
-  height: var(--scrub-vh);
-}
-
-.scrub-sticky {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
-  background: #000;
-}
-
-.hero-video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center center;
-  background: #000;
-  pointer-events: none;
-  image-rendering: auto;
-  transform: translateZ(0);
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-}
-
-.scroll-cue {
-  position: absolute;
-  left: 50%;
-  bottom: clamp(1.75rem, 5vh, 3.25rem);
-  z-index: 2;
-  display: grid;
-  justify-items: center;
-  gap: 0.55rem;
-  margin: 0;
-  transform: translateX(-50%);
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity 0.35s ease;
-  animation: scroll-cue-pulse 1.8s ease-in-out infinite;
-}
-
-.scroll-cue-label {
-  padding: 0.55rem 1.15rem;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: #fff;
-  font-size: clamp(0.95rem, 2.2vw, 1.15rem);
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.65);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
-}
-
-.scroll-cue-arrow {
-  width: 1.1rem;
-  height: 1.1rem;
-  border-right: 3px solid #fff;
-  border-bottom: 3px solid #fff;
-  transform: rotate(45deg);
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.7));
-}
-
-.scroll-cue.is-gone {
-  opacity: 0;
-  animation: none;
-}
-
-@keyframes scroll-cue-pulse {
-  0%,
-  100% {
-    transform: translateX(-50%) translateY(0);
-    opacity: 0.82;
+function startBootQuotes() {
+  if (!bootQuotes) return;
+  stopBootQuotes();
+  const initial = REDUCED_MOTION ? 5 : 8;
+  for (let i = 0; i < initial; i += 1) {
+    const id = window.setTimeout(spawnBootQuote, i * (REDUCED_MOTION ? 120 : 380));
+    quoteHideTimers.push(id);
   }
-  50% {
-    transform: translateX(-50%) translateY(10px);
-    opacity: 1;
+  quoteTimer = window.setInterval(() => {
+    if (occupiedQuoteCells.size < QUOTE_SLOTS.length) spawnBootQuote();
+  }, REDUCED_MOTION ? 1800 : 1100);
+}
+
+function stopBootQuotes() {
+  window.clearInterval(quoteTimer);
+  quoteHideTimers.forEach((id) => window.clearTimeout(id));
+  quoteHideTimers = [];
+  occupiedQuoteCells.clear();
+  bootQuotes?.replaceChildren();
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function renderMember(member) {
+  const bio = member.bio.map((p) => `<p>${escapeHtml(p)}</p>`).join("");
+  return `
+    <article class="member-card">
+      <div class="member-media">
+        <img src="${member.image}" alt="${escapeHtml(member.name)}" loading="lazy" />
+        <div class="member-bio">${bio}</div>
+      </div>
+      <div class="member-meta">
+        <h3>${escapeHtml(member.name)}</h3>
+        <p class="member-role">${escapeHtml(member.role)}</p>
+        <p class="member-sub">${escapeHtml(member.subtitle)}</p>
+      </div>
+    </article>
+  `;
+}
+
+function renderStaticContent() {
+  document.querySelector("#team-top").innerHTML = TEAM_TOP.map(renderMember).join("");
+  document.querySelector("#team-bottom").innerHTML = TEAM_BOTTOM.map(renderMember).join("");
+  document.querySelector("#feature-grid").innerHTML = FEATURES.map(
+    (item) => `
+      <article class="feature-card">
+        <h4>${escapeHtml(item.title)}</h4>
+        <p>${escapeHtml(item.description)}</p>
+      </article>
+    `,
+  ).join("");
+  document.querySelector("#method-grid").innerHTML = METHODS.map(
+    (item) => `
+      <article class="method-card">
+        <h4>${escapeHtml(item.title)}</h4>
+        <ul>${item.items.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
+      </article>
+    `,
+  ).join("");
+  document.querySelector("#values-wrap").innerHTML = VALUES.map(
+    (value) => `<span class="value-pill">${escapeHtml(value)}</span>`,
+  ).join("");
+}
+
+function getIntroProgress() {
+  const rect = intro.getBoundingClientRect();
+  const total = intro.offsetHeight - window.innerHeight;
+  if (total <= 0) return 0;
+  return clamp(-rect.top / total, 0, 1);
+}
+
+function progressToTime(progress) {
+  if (!duration || frameCount <= 1) return progress * duration;
+  const frame = Math.round(progress * (frameCount - 1));
+  return clamp(frame / FPS, 0, Math.max(0, duration - 1 / FPS));
+}
+
+let lastQueuedFrame = -1;
+
+function flushSeek() {
+  if (!duration || pendingTime < 0 || seeking) return;
+  const time = pendingTime;
+  const delta = Math.abs(time - displayedTime);
+  const minStep = Math.max(1, Math.round(FPS / SCRUB_FPS));
+  const step =
+    delta > 0.35 ? minStep * 4 : delta > 0.12 ? minStep * 2 : minStep;
+  const frame = Math.round((time * FPS) / step) * step;
+  const seekTime = clamp(frame / FPS, 0, Math.max(0, duration - 1 / FPS));
+  if (frame === lastQueuedFrame && delta < step / FPS) {
+    pendingTime = -1;
+    return;
   }
-}
-
-/* —— Shared farm story background (Team → Partnerships) —— */
-.story-world {
-  position: relative;
-  --veil-opacity: 0.57;
-}
-
-.story-world-bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.story-world-bg img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-}
-
-.story-world-veil {
-  position: absolute;
-  inset: 0;
-  background: rgb(255 255 255 / var(--veil-opacity));
-}
-
-.story-world > section {
-  position: relative;
-  z-index: 1;
-}
-
-/* —— Team —— */
-.team-section {
-  position: relative;
-  padding: clamp(4rem, 10vh, 7rem) clamp(1rem, 4vw, 2.5rem) 5rem;
-  color: var(--ink);
-  overflow: hidden;
-  background: transparent;
-}
-
-.team-inner {
-  position: relative;
-  z-index: 1;
-  max-width: 1500px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.section-kicker {
-  display: inline-flex;
-  margin: 0 0 0.85rem;
-  padding: 0.55rem 1.1rem;
-  border: 3px solid var(--ink);
-  border-radius: 1.5rem;
-  background: #fff;
-  font-size: 0.85rem;
-  font-weight: 800;
-}
-
-.section-kicker.light {
-  border-color: transparent;
-  background: transparent;
-  color: #fff;
-  text-shadow: 0 4px 10px rgba(13, 71, 161, 0.55);
-}
-
-.team-inner h2,
-.vision-title {
-  margin: 0 0 0.75rem;
-  font-size: clamp(2.2rem, 5vw, 3.4rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.team-inner h2 {
-  background: linear-gradient(90deg, #2563eb, #7c3aed, #db2777);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.section-lede {
-  margin: 0 auto 2.5rem;
-  max-width: 36rem;
-  color: rgba(15, 23, 42, 0.72);
-  font-size: 1.05rem;
-  font-weight: 600;
-  line-height: 1.55;
-}
-
-.section-lede.light {
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 3px 8px rgba(13, 71, 161, 0.45);
-}
-
-.team-grid {
-  display: grid;
-  gap: 2.5rem 2rem;
-  text-align: left;
-}
-
-.team-grid--top {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-width: 72rem;
-  margin: 0 auto 2.75rem;
-}
-
-.team-grid--bottom {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.member-card {
-  position: relative;
-  overflow: hidden;
-  border: 4px solid var(--ink);
-  border-radius: 1.5rem;
-  background: #fff;
-  box-shadow: 6px 6px 0 rgba(15, 23, 42, 0.85);
-  transition: transform 0.35s ease, box-shadow 0.35s ease;
-  cursor: default;
-}
-
-.member-card:hover {
-  transform: translateY(-8px) rotate(0.5deg);
-  box-shadow: 10px 12px 0 rgba(15, 23, 42, 0.8);
-}
-
-.member-media {
-  position: relative;
-  height: 20rem;
-  background: #f1f5f9;
-  overflow: hidden;
-}
-
-.member-media img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  object-position: top center;
-  transition: transform 0.4s ease;
-}
-
-.member-card:hover .member-media img {
-  transform: scale(1.04);
-}
-
-.member-bio {
-  position: absolute;
-  inset: 0;
-  padding: 1rem;
-  overflow: auto;
-  background: rgba(0, 0, 0, 0.86);
-  backdrop-filter: blur(8px);
-  color: #fff;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  text-align: left;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.member-card:hover .member-bio {
-  opacity: 1;
-}
-
-.member-bio p {
-  margin: 0 0 0.75rem;
-}
-
-.member-bio p:last-child {
-  margin-bottom: 0;
-}
-
-.member-meta {
-  position: relative;
-  padding: 1.1rem 1.15rem 1.25rem;
-}
-
-.member-meta::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-left: 3px solid var(--ink);
-  border-bottom: 3px solid var(--ink);
-  border-bottom-left-radius: 1rem;
-  background: #db2777;
-}
-
-.member-meta h3 {
-  margin: 0 2.5rem 0.25rem 0;
-  font-size: 1rem;
-  font-weight: 800;
-}
-
-.member-role {
-  margin: 0 0 0.2rem;
-  color: #2563eb;
-  font-size: 0.88rem;
-  font-weight: 800;
-}
-
-.member-sub {
-  margin: 0;
-  color: rgba(15, 23, 42, 0.62);
-  font-size: 0.84rem;
-}
-
-/* —— Vision —— */
-.vision-section {
-  position: relative;
-  color: var(--ink);
-  overflow: hidden;
-  background: transparent;
-}
-
-.vision-block {
-  position: relative;
-  z-index: 1;
-  padding: clamp(3rem, 8vh, 5.5rem) clamp(1rem, 4vw, 2.5rem);
-  text-align: center;
-}
-
-.vision-hero {
-  min-height: 88vh;
-  display: grid;
-  place-items: center;
-}
-
-.glass-panel {
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 2rem;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 18px 40px rgba(13, 71, 161, 0.18);
-  color: var(--ink);
-  text-align: left;
-}
-
-.vision-opening {
-  width: min(56rem, 100%);
-  padding: clamp(2rem, 5vw, 4rem);
-  text-align: center;
-}
-
-.vision-opening h2 {
-  margin: 0 0 1rem;
-  font-size: clamp(2.6rem, 8vw, 5.5rem);
-  line-height: 1.05;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  background: linear-gradient(180deg, #0d47a1 0%, #1e88e5 52%, #00a86b 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.vision-sub {
-  margin: 0 0 1rem;
-  color: #1565c0;
-  font-size: clamp(1.25rem, 3vw, 1.85rem);
-  font-weight: 800;
-}
-
-.accent-bar {
-  width: 7rem;
-  height: 0.45rem;
-  margin: 0 0 1.25rem;
-  background: var(--accent-lime);
-  box-shadow: 3px 3px 0 rgba(13, 71, 161, 0.16);
-}
-
-.accent-bar.center {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.vision-body,
-.philosophy-text {
-  margin: 0 auto;
-  max-width: 48rem;
-  color: #334155;
-  font-size: clamp(1.05rem, 2vw, 1.35rem);
-  font-weight: 600;
-  line-height: 1.65;
-}
-
-.philosophy-text {
-  color: var(--ink);
-  text-shadow: none;
-  font-size: clamp(1.25rem, 2.6vw, 1.85rem);
-  line-height: 1.55;
-}
-
-.vision-title {
-  color: var(--ink);
-  text-shadow: none;
-}
-
-.feature-grid,
-.method-grid {
-  display: grid;
-  gap: 1.25rem;
-  max-width: 72rem;
-  margin: 1.75rem auto 0;
-  text-align: left;
-}
-
-.feature-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.method-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.feature-card,
-.method-card {
-  position: relative;
-  overflow: hidden;
-  padding: 1.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 2rem;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--ink);
-  box-shadow: 0 18px 40px rgba(13, 71, 161, 0.18);
-  transition: transform 0.3s ease;
-}
-
-.feature-card:hover,
-.method-card:hover {
-  transform: translateY(-4px) rotate(-0.4deg);
-}
-
-.feature-card h4,
-.method-card h4 {
-  margin: 0 0 0.65rem;
-  font-size: 1.35rem;
-  font-weight: 800;
-}
-
-.feature-card p,
-.method-card li {
-  margin: 0;
-  color: #64748b;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.method-card ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.method-card li {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.65rem;
-}
-
-.method-card li::before {
-  content: "";
-  width: 0.55rem;
-  height: 0.55rem;
-  margin-top: 0.45rem;
-  border-radius: 999px;
-  background: var(--blue-bright);
-  flex-shrink: 0;
-}
-
-.logo-wrap {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 1.25rem;
-}
-
-.logo-wrap img {
-  width: min(22rem, 70vw);
-  height: auto;
-}
-
-.values-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.65rem;
-  max-width: 48rem;
-  margin: 1.5rem auto 0;
-}
-
-.value-pill {
-  padding: 0.45rem 0.95rem;
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--blue-deep);
-  font-size: 0.88rem;
-  font-weight: 800;
-  box-shadow: 0 8px 18px rgba(13, 71, 161, 0.16);
-  cursor: default;
-  transition: transform 0.2s ease;
-}
-
-.value-pill:hover {
-  transform: translateY(-2px) scale(1.04);
-}
-
-.vision-split {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem;
-  max-width: 68rem;
-  margin: 1.75rem auto 0;
-}
-
-.vision-split .glass-panel {
-  padding: 1.75rem;
-}
-
-.vision-split h4 {
-  margin: 0 0 0.85rem;
-  font-size: 1.65rem;
-  font-weight: 900;
-  background: linear-gradient(90deg, #0d47a1, #00a86b);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.vision-split article:last-child h4 {
-  background: linear-gradient(90deg, #0d47a1, #7c3aed);
-  -webkit-background-clip: text;
-  background-clip: text;
-}
-
-.vision-split p {
-  margin: 0 0 1rem;
-  color: #334155;
-  font-size: 1.05rem;
-  font-weight: 600;
-  line-height: 1.55;
-}
-
-.vision-split ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.vision-split li {
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  font-size: 1.05rem;
-  font-weight: 800;
-  color: #334155;
-}
-
-.vision-split li::before {
-  content: "";
-  width: 1.65rem;
-  height: 1.65rem;
-  border-radius: 0.35rem;
-  background: var(--accent-lime);
-  box-shadow: 2px 2px 0 rgba(13, 71, 161, 0.45);
-  flex-shrink: 0;
-}
-
-/* —— Mute —— */
-.mute-btn {
-  position: fixed;
-  right: 1.25rem;
-  bottom: 1.25rem;
-  z-index: 70;
-  width: 4.25rem;
-  height: 4.25rem;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25);
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  transition: transform 0.2s ease;
-}
-
-.mute-btn:hover {
-  transform: scale(1.05);
-}
-
-.mute-btn img {
-  width: 2.5rem;
-  height: 2.5rem;
-  object-fit: contain;
-}
-
-/* —— Boot —— */
-.boot {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-content: center;
-  background: #000;
-  transition: opacity 0.45s ease, visibility 0.45s ease;
-}
-
-.boot.is-done {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.boot-quotes {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.boot-quote {
-  position: absolute;
-  margin: 0;
-  padding: 0 0.45rem;
-  overflow: hidden;
-  color: rgba(255, 255, 255, 0.26);
-  text-align: left;
-  opacity: 0;
-  transition: opacity 1.15s ease;
-}
-
-.boot-quote.is-on {
-  opacity: 1;
-}
-
-.boot-quote p {
-  margin: 0;
-  font-weight: 600;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-}
-
-.boot-quote cite {
-  display: block;
-  margin-top: 0.45rem;
-  font-style: normal;
-  font-size: 0.72em;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.18);
-}
-
-.boot-quote.is-xs p {
-  font-size: clamp(0.72rem, 1.5vw, 0.9rem);
-}
-
-.boot-quote.is-sm p {
-  font-size: clamp(0.85rem, 1.9vw, 1.08rem);
-}
-
-.boot-quote.is-md p {
-  font-size: clamp(1.05rem, 2.5vw, 1.4rem);
-}
-
-.boot-quote.is-lg p {
-  font-size: clamp(1.25rem, 3.2vw, 1.85rem);
-}
-
-.boot-quote.is-xl p {
-  font-size: clamp(1.45rem, 4vw, 2.2rem);
-}
-
-.boot-inner {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  justify-items: center;
-  gap: 0.7rem;
-  background: transparent;
-}
-
-.boot-bear {
-  width: clamp(7.5rem, 18vw, 11rem);
-  height: auto;
-  animation: boot-spin 1.15s linear infinite;
-  transform-origin: center center;
-  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
-}
-
-.boot-label {
-  margin: 0;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.boot-status {
-  margin: 0;
-  font-size: clamp(1.65rem, 5vw, 2.35rem);
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  color: #fff;
-  text-shadow: 0 0 18px rgba(255, 255, 255, 0.28);
-}
-
-.boot-progress {
-  width: min(16rem, 62vw);
-  height: 0.42rem;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.boot-progress-fill {
-  width: 0%;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #67e8f9, #fde68a);
-  transition: width 0.2s ease;
-}
-
-@keyframes boot-spin {
-  from {
-    transform: rotate(0deg);
+  if (Math.abs(displayedTime - seekTime) < 1 / SCRUB_FPS) {
+    pendingTime = -1;
+    return;
   }
-  to {
-    transform: rotate(360deg);
+  lastQueuedFrame = frame;
+  seeking = true;
+  try {
+    video.currentTime = seekTime;
+  } catch {
+    seeking = false;
   }
 }
 
-/* —— Awards (pixel farm cabinet) —— */
-.awards-section {
-  position: relative;
-  padding: clamp(4rem, 10vh, 7rem) clamp(1rem, 4vw, 2.5rem) 5rem;
-  overflow: hidden;
-  color: var(--ink);
-  background: transparent;
-}
-
-.awards-inner {
-  position: relative;
-  z-index: 1;
-  max-width: 1100px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.awards-kicker {
-  border-color: #2a1810;
-  background: #f3e6c8;
-  color: #2a1810;
-}
-
-.awards-inner h2 {
-  margin: 0 0 0.75rem;
-  font-size: clamp(2.2rem, 5vw, 3.4rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--ink);
-  text-shadow: none;
-}
-
-.awards-lede {
-  color: rgba(15, 23, 42, 0.72);
-  text-shadow: none;
-}
-
-.farm-cabinet {
-  margin: 0 auto;
-  max-width: 52rem;
-  filter: drop-shadow(0 28px 40px rgba(0, 0, 0, 0.45));
-}
-
-.farm-cabinet-top {
-  display: flex;
-  justify-content: space-around;
-  align-items: flex-end;
-  height: 1.6rem;
-  padding: 0 1.5rem;
-  border: 4px solid #2a1810;
-  border-bottom: 0;
-  border-radius: 1rem 1rem 0 0;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      #8b5a2b 0 10px,
-      #7a4b22 10px 20px
-    );
-}
-
-.farm-nail {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 2px;
-  background: #c0c0c0;
-  box-shadow: inset 0 -1px 0 #6b7280, 0 2px 0 #2a1810;
-}
-
-.farm-cabinet-glass {
-  position: relative;
-  min-height: 28rem;
-  padding: 2.25rem 1.5rem 1.5rem;
-  border: 4px solid #2a1810;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 40%),
-    repeating-linear-gradient(
-      90deg,
-      #5c3a1e 0 14px,
-      #4a2e16 14px 28px
-    );
-  box-shadow: inset 0 0 0 10px #3d2614;
-}
-
-.farm-rail {
-  position: absolute;
-  top: 2.1rem;
-  left: 1.6rem;
-  right: 1.6rem;
-  height: 0.55rem;
-  border: 3px solid #2a1810;
-  background: #c4a06a;
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
-}
-
-.medal-rack {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 2.5rem 3.5rem;
-  padding: 1.75rem 0.5rem 0.5rem;
-  min-height: 22rem;
-}
-
-.medal-slot {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  width: min(36rem, 100%);
-  padding-top: 0.4rem;
-  outline: none;
-  cursor: default;
-}
-
-.medal-hang {
-  position: relative;
-  flex: 0 0 min(17rem, 58vw);
-  width: min(17rem, 58vw);
-  cursor: pointer;
-  outline: none;
-}
-
-.medal-peg {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  z-index: 3;
-  width: 0.85rem;
-  height: 0.85rem;
-  transform: translateX(-50%);
-  border: 2px solid #2a1810;
-  border-radius: 999px;
-  background: radial-gradient(circle at 30% 30%, #eee, #9ca3af 55%, #4b5563);
-  box-shadow: 0 2px 0 #2a1810;
-}
-
-.medal-swing {
-  transform-origin: top center;
-  animation: medal-idle-sway 4.8s ease-in-out infinite;
-  will-change: transform;
-}
-
-.medal-slot.is-dragging .medal-swing,
-.medal-hang:hover .medal-swing,
-.medal-hang:focus-within .medal-swing {
-  animation: none;
-}
-
-@keyframes medal-idle-sway {
-  0%,
-  100% {
-    transform: rotate(-3.2deg);
-  }
-  50% {
-    transform: rotate(3.2deg);
+function onSeeked() {
+  displayedTime = video.currentTime;
+  seeking = false;
+  if (pendingTime >= 0 && Math.abs(pendingTime - displayedTime) > 1 / SCRUB_FPS) {
+    flushSeek();
+  } else {
+    pendingTime = -1;
   }
 }
 
-.medal-ribbon {
-  position: relative;
-  z-index: 1;
-  width: 3.4rem;
-  height: 3.6rem;
-  margin: 0.15rem auto -0.55rem;
+function updateActiveNav() {
+  const sections = [
+    { id: "intro", el: intro },
+    { id: "team", el: document.querySelector("#team") },
+    { id: "vision", el: document.querySelector("#vision") },
+    { id: "awards", el: document.querySelector("#awards") },
+    { id: "partnerships", el: document.querySelector("#partnerships") },
+  ].filter((section) => section.el);
+  const mid = window.innerHeight * 0.35;
+  let active = "intro";
+  for (const section of sections) {
+    const top = section.el.getBoundingClientRect().top;
+    if (top <= mid) active = section.id;
+  }
+  navItems.forEach((item) => {
+    item.classList.toggle("is-active", item.dataset.section === active);
+  });
 }
 
-.ribbon-loop {
-  display: block;
-  width: 1.35rem;
-  height: 1.35rem;
-  margin: 0 auto;
-  border: 3px solid #7f1d1d;
-  border-radius: 999px;
-  background: #dc2626;
-  box-shadow: inset 0 0 0 3px #fca5a5;
-}
+function syncFromScroll() {
+  if (!ready || !duration) return;
 
-.ribbon-tail {
-  position: absolute;
-  top: 1rem;
-  width: 1.35rem;
-  height: 2.55rem;
-  border: 2px solid #7f1d1d;
-  background:
-    repeating-linear-gradient(
-      180deg,
-      #ef4444 0 8px,
-      #b91c1c 8px 16px
-    );
-  clip-path: polygon(0 0, 100% 0, 100% 78%, 50% 100%, 0 78%);
-}
-
-.ribbon-tail--left {
-  left: 0.25rem;
-  transform: rotate(-8deg);
-}
-
-.ribbon-tail--right {
-  right: 0.25rem;
-  transform: rotate(8deg);
-}
-
-.medal-flip {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1;
-  transform-style: preserve-3d;
-  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.medal-hang:hover .medal-flip,
-.medal-hang:focus-within .medal-flip {
-  transform: rotateY(180deg);
-}
-
-.medal-face {
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  border-radius: 50%;
-  overflow: hidden;
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.45),
-    inset 0 0 0 3px rgba(255, 255, 255, 0.18);
-}
-
-.medal-face img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  background: #000;
-}
-
-.medal-face--back {
-  transform: rotateY(180deg);
-}
-
-.medal-info {
-  flex: 1 1 12rem;
-  max-width: 16rem;
-  padding: 1rem 1.05rem;
-  border: 3px solid #2a1810;
-  border-radius: 0.85rem;
-  background: rgba(243, 230, 200, 0.94);
-  color: #2a1810;
-  text-align: left;
-  box-shadow: 4px 4px 0 #2a1810;
-  opacity: 0;
-  transform: translateX(0.65rem);
-  pointer-events: none;
-  transition:
-    opacity 0.28s ease,
-    transform 0.28s ease;
-}
-
-.medal-slot:has(.medal-hang:hover) .medal-info,
-.medal-slot:has(.medal-hang:focus-within) .medal-info {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.medal-info-kicker {
-  margin: 0 0 0.4rem;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #b45309;
-}
-
-.medal-info h3 {
-  margin: 0 0 0.5rem;
-  font-size: clamp(0.92rem, 2.2vw, 1.05rem);
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.medal-info p {
-  margin: 0;
-  font-size: clamp(0.78rem, 1.8vw, 0.86rem);
-  line-height: 1.4;
-  color: #4a3424;
-}
-
-.farm-hint {
-  margin: 1.25rem 0 0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: rgba(42, 24, 16, 0.72);
-}
-
-.farm-cabinet-base {
-  height: 1.35rem;
-  border: 4px solid #2a1810;
-  border-top: 0;
-  border-radius: 0 0 1rem 1rem;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      #8b5a2b 0 10px,
-      #7a4b22 10px 20px
-    );
-}
-
-/* —— Partnerships (placeholder) —— */
-.partnerships-section {
-  padding: clamp(4rem, 10vh, 7rem) clamp(1rem, 4vw, 2.5rem) 6rem;
-  background: transparent;
-  color: var(--ink);
-  text-align: center;
-}
-
-.partnerships-inner {
-  max-width: 48rem;
-  margin: 0 auto;
-}
-
-.partnerships-inner h2 {
-  margin: 0 0 0.75rem;
-  font-size: clamp(2.2rem, 5vw, 3.4rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-}
-
-.partnerships-inner .section-kicker {
-  border-color: var(--ink);
-  background: #fff;
-  color: var(--ink);
-}
-
-.partnerships-inner .section-lede {
-  color: rgba(15, 23, 42, 0.72);
-}
-
-@media (max-width: 760px) {
-  .farm-cabinet-glass {
-    min-height: 24rem;
-    padding: 2rem 0.85rem 1.15rem;
+  const targetProgress = getIntroProgress();
+  // 离开 intro 后固定在片尾，避免无效 seek
+  if (targetProgress >= 0.999) {
+    displayProgress = 1;
+    scrubVelocity = 0;
+  } else if (REDUCED_MOTION) {
+    displayProgress = targetProgress;
+    scrubVelocity = 0;
+  } else {
+    const delta = targetProgress - displayProgress;
+    scrubVelocity += delta * 0.15;
+    scrubVelocity *= 0.84;
+    displayProgress = clamp(displayProgress + scrubVelocity, 0, 1);
+    if (Math.abs(delta) < 0.00008 && Math.abs(scrubVelocity) < 0.00008) {
+      displayProgress = targetProgress;
+      scrubVelocity = 0;
+    }
   }
 
-  .medal-rack {
-    min-height: 18rem;
-  }
-
-  .medal-slot {
-    flex-direction: column;
-    gap: 0.85rem;
-  }
-
-  .medal-info {
-    max-width: min(17rem, 58vw);
-    text-align: center;
-    transform: translateY(0.45rem);
-  }
-
-  .medal-slot:has(.medal-hang:hover) .medal-info,
-  .medal-slot:has(.medal-hang:focus-within) .medal-info {
-    transform: translateY(0);
-  }
+  pendingTime = progressToTime(displayProgress);
+  flushSeek();
+  scrollCue?.classList.toggle("is-gone", targetProgress > 0.02);
+  updateActiveNav();
 }
 
-@media (max-width: 1100px) {
-  .team-grid--bottom {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .method-grid {
-    grid-template-columns: 1fr;
-  }
+function frame() {
+  rafId = requestAnimationFrame(frame);
+  if (!ready) return;
+  syncFromScroll();
 }
 
-@media (max-width: 760px) {
-  .site-header {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-  }
+async function loadVideoAsBlob(src) {
+  setBootProgress(0);
+  const response = await fetch(src, { mode: "cors", credentials: "omit" });
+  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
+  const total = Number(response.headers.get("content-length")) || 0;
+  if (!response.body) return response.blob();
 
-  .header-glass {
-    max-width: calc(100vw - 1.5rem);
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    if (total > 0) {
+      setBootProgress(Math.min(100, (received / total) * 100));
+    } else {
+      setBootProgress(0, `${(received / (1024 * 1024)).toFixed(0)} MB`);
+    }
   }
+  setBootProgress(100);
+  return new Blob(chunks, { type: "video/mp4" });
+}
 
-  .nav-item {
-    font-size: 0.75rem;
-    padding: 0.55rem 0.75rem;
+function attachSource(blob) {
+  objectUrl = URL.createObjectURL(blob);
+  video.src = objectUrl;
+  video.load();
+  return new Promise((resolve, reject) => {
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("Video decode failed"));
+    };
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onReady);
+      video.removeEventListener("error", onError);
+    };
+    video.addEventListener("loadedmetadata", onReady, { once: true });
+    video.addEventListener("error", onError, { once: true });
+  });
+}
+
+function updateMuteUi() {
+  muteIcon.src = isMuted ? "/about/speakeroff.webp" : "/about/speaker%20on.webp";
+  muteBtn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
+}
+
+function applyMuteState() {
+  if (!bgm) return;
+  bgm.muted = isMuted;
+  if (isMuted) {
+    bgm.pause();
+  } else {
+    void bgm.play().catch(() => {});
   }
+  localStorage.setItem(MUTE_KEY, String(isMuted));
+  updateMuteUi();
+}
 
-  .team-grid--top,
-  .team-grid--bottom,
-  .feature-grid,
-  .vision-split {
-    grid-template-columns: 1fr;
-  }
+function setupAudio() {
+  bgm = new Audio(BGM_SRC);
+  bgm.loop = true;
+  bgm.volume = 0.3;
+  bgm.preload = "auto";
+  updateMuteUi();
+  applyMuteState();
 
-  .member-media {
-    height: 16rem;
+  const unlock = () => {
+    if (!isMuted) void bgm.play().catch(() => {});
+    window.removeEventListener("pointerdown", unlock);
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("wheel", unlock);
+  };
+  window.addEventListener("pointerdown", unlock, { passive: true });
+  window.addEventListener("keydown", unlock);
+  window.addEventListener("wheel", unlock, { passive: true });
+
+  muteBtn.addEventListener("click", () => {
+    isMuted = !isMuted;
+    applyMuteState();
+  });
+}
+
+function setupMedalPhysics() {
+  if (REDUCED_MOTION) return;
+  const slots = document.querySelectorAll(".medal-slot");
+  slots.forEach((slot) => {
+    const hang = slot.querySelector(".medal-hang");
+    const swing = slot.querySelector(".medal-swing");
+    if (!hang || !swing) return;
+
+    let angle = 0;
+    let velocity = 0;
+    let target = 0;
+    let hovering = false;
+    let raf = 0;
+
+    const tick = () => {
+      const spring = 0.085;
+      const damp = 0.9;
+      velocity += (target - angle) * spring;
+      velocity *= damp;
+      angle += velocity;
+      swing.style.transform = `rotate(${angle}deg)`;
+      if (!hovering && Math.abs(angle) < 0.08 && Math.abs(velocity) < 0.08) {
+        angle = 0;
+        velocity = 0;
+        swing.style.transform = "";
+        raf = 0;
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+
+    const ensureTick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const onMove = (event) => {
+      const rect = hang.getBoundingClientRect();
+      const x =
+        ("clientX" in event ? event.clientX : event.touches?.[0]?.clientX) ??
+        rect.left + rect.width / 2;
+      const norm = ((x - rect.left) / rect.width) * 2 - 1;
+      target = clamp(norm * 14, -16, 16);
+      ensureTick();
+    };
+
+    hang.addEventListener("pointerenter", () => {
+      hovering = true;
+      slot.classList.add("is-dragging");
+      ensureTick();
+    });
+    hang.addEventListener("pointerleave", () => {
+      hovering = false;
+      target = 0;
+      slot.classList.remove("is-dragging");
+      ensureTick();
+    });
+    hang.addEventListener("pointermove", onMove);
+  });
+}
+
+function bindVideo() {
+  duration = Number.isFinite(video.duration) ? video.duration : 0;
+  frameCount = SOURCE_FRAME_COUNT || Math.max(1, Math.round(duration * FPS));
+  video.pause();
+  video.currentTime = 0;
+  displayedTime = 0;
+  pendingTime = -1;
+  displayProgress = 0;
+  scrubVelocity = 0;
+  ready = duration > 0;
+
+  video.addEventListener("seeked", onSeeked);
+  window.addEventListener("scroll", () => syncFromScroll(), { passive: true });
+  window.addEventListener("resize", () => syncFromScroll());
+  rafId = requestAnimationFrame(frame);
+  stopBootQuotes();
+  boot.classList.add("is-done");
+  syncFromScroll();
+}
+
+async function start() {
+  renderStaticContent();
+  setupMedalPhysics();
+  setupAudio();
+  startBootQuotes();
+  try {
+    const blob = await loadVideoAsBlob(VIDEO_SRC);
+    setBootProgress(100, "Decoding…");
+    await attachSource(blob);
+    bindVideo();
+  } catch (error) {
+    console.error(error);
+    stopBootQuotes();
+    setBootProgress(0, "Failed");
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
+window.addEventListener("beforeunload", () => {
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  if (rafId) cancelAnimationFrame(rafId);
+  if (bgm) {
+    bgm.pause();
+    bgm.src = "";
   }
+});
 
-  .scroll-cue,
-  .boot,
-  .boot-bear,
-  .boot-quote,
-  .medal-swing,
-  .nav-item,
-  .member-card {
-    transition: none;
-    animation: none !important;
-  }
-}
+start();
