@@ -58,6 +58,7 @@
             muted
             playsinline
             preload="auto"
+            crossorigin="anonymous"
             aria-hidden="true"
           ></video>
           <div class="scroll-cue" id="scroll-cue" aria-hidden="true">
@@ -243,9 +244,19 @@
     </button>
 
     <div class="boot" id="boot">
+      <div class="boot-quotes" id="boot-quotes" aria-hidden="true">
+        <blockquote class="boot-quote" id="boot-quote">
+          <p id="boot-quote-text"></p>
+          <cite id="boot-quote-author"></cite>
+        </blockquote>
+      </div>
       <div class="boot-inner">
         <img class="boot-bear" src="/Cagenthang.png" alt="" width="180" height="180" />
-        <p class="boot-status" id="boot-status">Loading…</p>
+        <p class="boot-label">Loading video</p>
+        <p class="boot-status" id="boot-status">0%</p>
+        <div class="boot-progress" aria-hidden="true">
+          <div class="boot-progress-fill" id="boot-progress-fill"></div>
+        </div>
       </div>
     </div>
 
