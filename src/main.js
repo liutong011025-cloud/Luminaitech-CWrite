@@ -92,7 +92,6 @@ const LOADING_QUOTES = [
 const FPS = 120;
 const SOURCE_FRAME_COUNT = 5408;
 const SCRUB_FPS = 20;
-const LERP = REDUCED_MOTION ? 1 : 0.55;
 
 const FEATURES = [
   {
@@ -258,6 +257,7 @@ let seeking = false;
 let pendingTime = -1;
 let displayedTime = 0;
 let displayProgress = 0;
+let scrubVelocity = 0;
 let ready = false;
 let rafId = 0;
 let objectUrl = "";
@@ -282,17 +282,12 @@ function randomBetween(min, max) {
   return min + Math.random() * (max - min);
 }
 
-function pickQuoteCell() {
-  const cols = 4;
-  const rows = 4;
+function pickQuoteSlot() {
+  const total = 12;
   const free = [];
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const isCenter = row >= 1 && row <= 2 && col >= 1 && col <= 2;
-      if (isCenter) continue;
-      const key = `${row}-${col}`;
-      if (!occupiedQuoteCells.has(key)) free.push({ row, col, key });
-    }
+  for (let i = 0; i < total; i += 1) {
+    const key = String(i);
+    if (!occupiedQuoteCells.has(key)) free.push(i);
   }
   if (!free.length) return null;
   return free[Math.floor(Math.random() * free.length)];
@@ -300,19 +295,24 @@ function pickQuoteCell() {
 
 function spawnBootQuote() {
   if (!bootQuotes || boot.classList.contains("is-done")) return;
-  const cell = pickQuoteCell();
-  if (!cell) return;
+  const slot = pickQuoteSlot();
+  if (slot === null) return;
 
   const quote = LOADING_QUOTES[quoteIndex % LOADING_QUOTES.length];
   quoteIndex += 1;
-  occupiedQuoteCells.add(cell.key);
+  occupiedQuoteCells.add(String(slot));
 
   const sizes = ["is-xs", "is-sm", "is-md", "is-lg", "is-xl"];
   const el = document.createElement("blockquote");
   el.className = `boot-quote ${sizes[Math.floor(Math.random() * sizes.length)]}`;
-  el.style.top = `${(cell.row / 4) * 100 + randomBetween(2, 8)}%`;
-  el.style.left = `${(cell.col / 4) * 100 + randomBetween(1.5, 6)}%`;
-  el.style.width = `${18 + Math.random() * 8}%`;
+  const angle = (slot / 12) * Math.PI * 2 + randomBetween(-0.18, 0.18);
+  const radius = randomBetween(16, 27);
+  const left = 50 + Math.cos(angle) * radius * 1.05;
+  const top = 50 + Math.sin(angle) * radius * 0.92;
+  el.style.left = `${clamp(left, 10, 78)}%`;
+  el.style.top = `${clamp(top, 10, 78)}%`;
+  el.style.width = `${20 + Math.random() * 10}%`;
+  el.style.transform = "translate(-50%, -50%)";
   el.innerHTML = `<p>${escapeHtml(`“${quote.text}”`)}</p><cite>— ${escapeHtml(quote.author)}</cite>`;
   bootQuotes.append(el);
 
@@ -325,7 +325,7 @@ function spawnBootQuote() {
     el.classList.remove("is-on");
     const removeId = window.setTimeout(() => {
       el.remove();
-      occupiedQuoteCells.delete(cell.key);
+      occupiedQuoteCells.delete(String(slot));
     }, REDUCED_MOTION ? 0 : 1200);
     quoteHideTimers.push(removeId);
   }, visibleFor);
@@ -479,10 +479,18 @@ function syncFromScroll() {
   // 离开 intro 后固定在片尾，避免无效 seek
   if (targetProgress >= 0.999) {
     displayProgress = 1;
+    scrubVelocity = 0;
+  } else if (REDUCED_MOTION) {
+    displayProgress = targetProgress;
+    scrubVelocity = 0;
   } else {
-    displayProgress += (targetProgress - displayProgress) * LERP;
-    if (Math.abs(targetProgress - displayProgress) < 0.00012) {
+    const delta = targetProgress - displayProgress;
+    scrubVelocity += delta * 0.15;
+    scrubVelocity *= 0.84;
+    displayProgress = clamp(displayProgress + scrubVelocity, 0, 1);
+    if (Math.abs(delta) < 0.00008 && Math.abs(scrubVelocity) < 0.00008) {
       displayProgress = targetProgress;
+      scrubVelocity = 0;
     }
   }
 
@@ -654,6 +662,7 @@ function bindVideo() {
   displayedTime = 0;
   pendingTime = -1;
   displayProgress = 0;
+  scrubVelocity = 0;
   ready = duration > 0;
 
   video.addEventListener("seeked", onSeeked);
