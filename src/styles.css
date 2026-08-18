@@ -766,13 +766,12 @@ img {
   color: rgba(255, 255, 255, 0.26);
   text-align: left;
   opacity: 0;
-  transform: translateY(10px);
-  transition: opacity 1.15s ease, transform 1.15s ease;
+  transform: translate(-50%, -50%);
+  transition: opacity 1.15s ease;
 }
 
 .boot-quote.is-on {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .boot-quote p {
