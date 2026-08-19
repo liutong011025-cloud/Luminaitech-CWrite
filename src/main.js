@@ -1,4 +1,4 @@
-// 本地用 /hero-play.mp4；上线把压缩播放版放到 CDN，在 Vercel 配 VITE_VIDEO_SRC
+// 本地用 /hero-play.mp4；线上固定走已上传的压缩播放版，避开 1.7GB 全 I 帧
 function resolveVideoSrc(src) {
   const raw = String(src || "").trim();
   if (!raw) return "/hero-play.mp4";
@@ -6,7 +6,23 @@ function resolveVideoSrc(src) {
   return `https://${raw.replace(/^\/+/, "")}`;
 }
 
-const VIDEO_SRC = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "/hero-play.mp4");
+function isLocalHost() {
+  return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+}
+
+function cacheBust(src) {
+  if (!src || src.includes("?")) return src;
+  return `${src}?v=20260819`;
+}
+
+function pickVideoSrc() {
+  const env = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "");
+  if (isLocalHost()) return "/hero-play.mp4";
+  if (env && /^https?:\/\//i.test(env) && !/hero-scrub\.mp4/i.test(env)) return cacheBust(env);
+  return cacheBust("https://designscaffold.com/hero-play.mp4");
+}
+
+const VIDEO_SRC = pickVideoSrc();
 const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
 const MEDAL_SFX_SRC = "/medal-hover.mp3";
 const MUTE_KEY = "cwrite-home-muted";
@@ -262,8 +278,9 @@ let ready = false;
 let keyIndex = 0;
 let playing = false;
 let playRaf = 0;
-let queuedIndex = -1;
 let touchStartY = 0;
+let stepCooldownUntil = 0;
+let playWatch = null;
 let bgm = null;
 let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
@@ -432,30 +449,26 @@ function finishPlay() {
     cancelAnimationFrame(playRaf);
     playRaf = 0;
   }
+  if (playWatch) {
+    video.removeEventListener("timeupdate", playWatch);
+    video.removeEventListener("ended", playWatch);
+    playWatch = null;
+  }
+  stepCooldownUntil = Date.now() + 420;
   syncScrollLock();
   scrollCue?.classList.toggle("is-gone", keyIndex > 0);
   updateActiveNav();
-  if (queuedIndex >= 0 && queuedIndex !== keyIndex) {
-    const next = queuedIndex;
-    queuedIndex = -1;
-    playToIndex(next);
-  } else {
-    queuedIndex = -1;
-  }
 }
 
 function playToIndex(next) {
   if (!ready || !duration) return;
   const times = keyTimes();
   next = clamp(Math.round(next), 0, times.length - 1);
-  if (playing) {
-    queuedIndex = next;
-    return;
-  }
+  if (playing) return;
   const target = times[next];
-  if (next === keyIndex && Math.abs(video.currentTime - target) < 0.08) return;
+  if (next === keyIndex && Math.abs(video.currentTime - target) < 0.12) return;
 
-  if (REDUCED_MOTION || next <= keyIndex) {
+  if (REDUCED_MOTION || next < keyIndex) {
     video.pause();
     video.currentTime = target;
     keyIndex = next;
@@ -464,40 +477,25 @@ function playToIndex(next) {
   }
 
   playing = true;
-  const startFrom = times[keyIndex];
-  const watch = () => {
+  const stopAtTarget = () => {
     if (!playing) return;
-    if (video.currentTime >= target - 0.04) {
-      video.pause();
-      video.currentTime = target;
-      keyIndex = next;
-      finishPlay();
-      return;
-    }
-    playRaf = requestAnimationFrame(watch);
-  };
-  const startPlay = () => {
-    void video
-      .play()
-      .then(() => {
-        playRaf = requestAnimationFrame(watch);
-      })
-      .catch(() => {
-        video.currentTime = target;
-        keyIndex = next;
-        finishPlay();
-      });
+    if (video.currentTime < target - 0.05 && !video.ended) return;
+    video.pause();
+    keyIndex = next;
+    finishPlay();
   };
 
-  if (Math.abs(video.currentTime - startFrom) > 0.12) {
-    video.currentTime = startFrom;
-    video.addEventListener("seeked", startPlay, { once: true });
-    return;
-  }
-  startPlay();
+  playWatch = stopAtTarget;
+  video.addEventListener("timeupdate", stopAtTarget);
+  video.addEventListener("ended", stopAtTarget);
+  void video.play().catch(() => {
+    keyIndex = next;
+    finishPlay();
+  });
 }
 
 function stepIntro(direction) {
+  if (playing || Date.now() < stepCooldownUntil) return;
   playToIndex(keyIndex + direction);
 }
 
@@ -505,14 +503,19 @@ function onIntroWheel(event) {
   if (!ready) return;
   const atTop = window.scrollY <= 2;
   const last = lastKeyIndex();
-  const down = event.deltaY > 1;
-  const up = event.deltaY < -1;
-  if (down && atTop && keyIndex < last) {
+  if (!atTop) return;
+  if (playing || Date.now() < stepCooldownUntil) {
+    if (keyIndex < last || event.deltaY < 0) event.preventDefault();
+    return;
+  }
+  if (Math.abs(event.deltaY) < 18) return;
+  const down = event.deltaY > 0;
+  if (down && keyIndex < last) {
     event.preventDefault();
     stepIntro(1);
     return;
   }
-  if (up && atTop && (keyIndex > 0 || playing)) {
+  if (!down && keyIndex > 0) {
     event.preventDefault();
     stepIntro(-1);
   }
@@ -523,7 +526,7 @@ function onIntroTouchStart(event) {
 }
 
 function onIntroTouchEnd(event) {
-  if (!ready) return;
+  if (!ready || playing || Date.now() < stepCooldownUntil) return;
   const y = event.changedTouches[0]?.clientY ?? touchStartY;
   const dy = touchStartY - y;
   if (Math.abs(dy) < 48) return;
@@ -537,7 +540,7 @@ function onIntroTouchEnd(event) {
 }
 
 function onIntroKey(event) {
-  if (!ready) return;
+  if (!ready || playing || Date.now() < stepCooldownUntil) return;
   const atTop = window.scrollY <= 2;
   const last = lastKeyIndex();
   if (["ArrowDown", "PageDown", " "].includes(event.key) && atTop && keyIndex < last) {
@@ -584,11 +587,9 @@ function videoCandidates(src) {
     }
     list.push(next);
   };
-  add("/hero-play.mp4");
-  add("https://designscaffold.com/hero-play.mp4");
-  if (!/hero-scrub\.mp4/i.test(src)) add(src);
-  add("https://designscaffold.com/hero-scrub.mp4");
-  add("https://ichingtcc.cn/hero-scrub.mp4");
+  if (isLocalHost()) add("/hero-play.mp4");
+  add(src);
+  add(cacheBust("https://designscaffold.com/hero-play.mp4"));
   return list;
 }
 
@@ -644,6 +645,33 @@ async function loadVideo(src) {
     }
   }
   throw lastError || new Error("Unable to load video");
+}
+
+function waitForBuffer(seconds) {
+  return new Promise((resolve) => {
+    const needed = Math.min(seconds, Math.max(0.4, (video.duration || seconds) * 0.08));
+    const readyEnough = () => {
+      if (!video.buffered.length) return false;
+      return video.buffered.end(0) >= needed;
+    };
+    if (readyEnough()) {
+      resolve();
+      return;
+    }
+    const onProgress = () => {
+      const end = video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0;
+      if (video.duration) setBootProgress(Math.min(99, (end / video.duration) * 100), "Loading…");
+      if (readyEnough()) {
+        video.removeEventListener("progress", onProgress);
+        resolve();
+      }
+    };
+    video.addEventListener("progress", onProgress);
+    window.setTimeout(() => {
+      video.removeEventListener("progress", onProgress);
+      resolve();
+    }, 6000);
+  });
 }
 
 function updateMuteUi() {
@@ -835,6 +863,7 @@ async function start() {
   startBootQuotes();
   try {
     await loadVideo(VIDEO_SRC);
+    await waitForBuffer(4);
     setBootProgress(100);
     bindVideo();
   } catch (error) {
