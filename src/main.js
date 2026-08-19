@@ -586,13 +586,29 @@ function setupAudio() {
   bgm.loop = true;
   bgm.volume = 0.3;
   bgm.preload = "auto";
-  medalSfx = new Audio(MEDAL_SFX_SRC);
-  medalSfx.preload = "auto";
+  medalSfx = document.querySelector("#medal-sfx");
+  if (!medalSfx) {
+    medalSfx = new Audio(MEDAL_SFX_SRC);
+    medalSfx.preload = "auto";
+  }
   medalSfx.volume = 1;
   updateMuteUi();
   applyMuteState();
 
   const unlock = () => {
+    if (medalSfx) {
+      medalSfx.muted = isMuted;
+      medalSfx.volume = 1;
+      const resume = medalSfx.play();
+      if (resume) {
+        void resume
+          .then(() => {
+            medalSfx.pause();
+            medalSfx.currentTime = 0;
+          })
+          .catch(() => {});
+      }
+    }
     if (!isMuted) void bgm.play().catch(() => {});
     window.removeEventListener("pointerdown", unlock);
     window.removeEventListener("keydown", unlock);
@@ -610,9 +626,15 @@ function setupAudio() {
 
 function playMedalSfx() {
   if (isMuted || !medalSfx) return;
-  medalSfx.currentTime = 0;
-  medalSfx.volume = 1;
-  void medalSfx.play().catch(() => {});
+  try {
+    medalSfx.pause();
+    medalSfx.currentTime = 0;
+    medalSfx.muted = false;
+    medalSfx.volume = 1;
+    void medalSfx.play().catch(() => {});
+  } catch {
+    // ignore autoplay restrictions until the next click
+  }
 }
 
 function setupMedalPhysics() {
@@ -623,6 +645,9 @@ function setupMedalPhysics() {
     if (!hang) return;
 
     hang.addEventListener("pointerenter", () => {
+      playMedalSfx();
+    });
+    hang.addEventListener("mouseenter", () => {
       playMedalSfx();
     });
 
@@ -702,8 +727,8 @@ function bindVideo() {
 
 async function start() {
   renderStaticContent();
-  setupMedalPhysics();
   setupAudio();
+  setupMedalPhysics();
   startBootQuotes();
   try {
     const blob = await loadVideoAsBlob(VIDEO_SRC);
