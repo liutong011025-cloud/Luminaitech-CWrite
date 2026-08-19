@@ -413,12 +413,15 @@ function renderStaticContent() {
   ).join("");
 }
 
+const PLAYBACK_RATE = 1.8;
+let bootShown = 0;
+
 function lastClipIndex() {
   return HERO_CLIPS.length - 1;
 }
 
 function atClipEnd() {
-  return Boolean(video.ended || (video.duration && video.currentTime >= video.duration - 0.08));
+  return Boolean(video.ended || (video.duration && video.currentTime >= video.duration - 0.15));
 }
 
 function syncScrollCue() {
@@ -434,8 +437,10 @@ function syncScrollLock() {
 }
 
 function reportBootBytes(received, total) {
-  const pct = total > 0 ? Math.min(96, (received / total) * 100) : 0;
-  setBootProgress(pct, `${Math.round(pct)}%`);
+  if (total <= 0) return;
+  const pct = Math.min(96, (received / total) * 100);
+  bootShown = Math.max(bootShown, pct);
+  setBootProgress(bootShown, `${Math.round(bootShown)}%`);
 }
 
 async function downloadClip(src, onBytes) {
@@ -459,6 +464,7 @@ async function downloadClip(src, onBytes) {
 }
 
 async function loadAllClips() {
+  bootShown = 0;
   setBootProgress(1, "0%");
   const received = HERO_CLIPS.map(() => 0);
   const totals = HERO_CLIPS.map(() => 0);
@@ -510,6 +516,7 @@ async function loadAllClips() {
           el.addEventListener("loadeddata", ok, { once: true });
           el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
           el.preload = "auto";
+          el.playbackRate = PLAYBACK_RATE;
           el.src = clipUrls[index];
         }),
     ),
@@ -523,6 +530,7 @@ function setActiveClip(index, atEnd = false) {
     if (i !== index) el.pause();
   });
   video = clipVideos[index];
+  video.playbackRate = PLAYBACK_RATE;
   video.pause();
   if (atEnd && video.duration) video.currentTime = Math.max(0, video.duration - 0.04);
   else video.currentTime = 0;
@@ -564,6 +572,7 @@ function playCurrentClip() {
   playWatch = stopAtEnd;
   video.addEventListener("timeupdate", stopAtEnd);
   video.addEventListener("ended", stopAtEnd);
+  video.playbackRate = PLAYBACK_RATE;
   void video.play().catch(() => finishPlay());
 }
 
