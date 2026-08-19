@@ -85,9 +85,17 @@ const LOADING_QUOTES = [
   },
 ];
 /**
- * 原片拆成 4 段（均小于 GitHub 25MB）。进页前全部下载并解码完毕。
+ * 按关键帧切段：0 → 6.06 → 14.17 → 21.24 → 27.15 → 35.08 → 44.12
+ * 每段停在转折点，并重新显示 Scroll down。
  */
-const HERO_CLIPS = ["/hero-1.mp4", "/hero-2.mp4", "/hero-3.mp4", "/hero-4.mp4"];
+const HERO_CLIPS = [
+  "/hero-1.mp4",
+  "/hero-2.mp4",
+  "/hero-3.mp4",
+  "/hero-4.mp4",
+  "/hero-5.mp4",
+  "/hero-6.mp4",
+];
 
 const FEATURES = [
   {
@@ -413,6 +421,11 @@ function atClipEnd() {
   return Boolean(video.ended || (video.duration && video.currentTime >= video.duration - 0.08));
 }
 
+function syncScrollCue() {
+  const introDone = clipIndex >= lastClipIndex() && atClipEnd();
+  scrollCue?.classList.toggle("is-gone", playing || introDone);
+}
+
 function syncScrollLock() {
   document.body.classList.toggle(
     "is-intro-locked",
@@ -513,6 +526,7 @@ function setActiveClip(index, atEnd = false) {
   video.pause();
   if (atEnd && video.duration) video.currentTime = Math.max(0, video.duration - 0.04);
   else video.currentTime = 0;
+  syncScrollCue();
 }
 
 function finishPlay() {
@@ -528,7 +542,7 @@ function finishPlay() {
   }
   stepCooldownUntil = Date.now() + 420;
   syncScrollLock();
-  scrollCue?.classList.toggle("is-gone", clipIndex > 0 || atClipEnd());
+  syncScrollCue();
   updateActiveNav();
 }
 
@@ -540,6 +554,7 @@ function loadClip(index, atEnd = false) {
 function playCurrentClip() {
   if (playing) return;
   playing = true;
+  syncScrollCue();
   const stopAtEnd = () => {
     if (!playing) return;
     if (!atClipEnd()) return;
