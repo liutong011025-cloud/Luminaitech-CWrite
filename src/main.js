@@ -1,5 +1,12 @@
 // 本地用 /hero-scrub.mp4；上线把大视频放到 CDN/对象存储，在 Vercel 配 VITE_VIDEO_SRC
-const VIDEO_SRC = import.meta.env.VITE_VIDEO_SRC || "/hero-scrub.mp4";
+function resolveVideoSrc(src) {
+  const raw = String(src || "").trim();
+  if (!raw) return "/hero-scrub.mp4";
+  if (/^https?:\/\//i.test(raw) || raw.startsWith("/")) return raw;
+  return `https://${raw.replace(/^\/+/, "")}`;
+}
+
+const VIDEO_SRC = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "/hero-scrub.mp4");
 const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
 const MEDAL_SFX_SRC = "/medal-hover.mp3";
 const MUTE_KEY = "cwrite-home-muted";
@@ -515,59 +522,32 @@ function frame() {
   syncFromScroll();
 }
 
-async function fetchWithRetry(src, options = {}, attempts = 3) {
+async function fetchWithRetry(src, options = {}, attempts = 2) {
   let lastError;
   for (let i = 0; i < attempts; i += 1) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 25000);
     try {
       const response = await fetch(src, {
         mode: "cors",
         credentials: "omit",
         cache: "no-store",
+        signal: controller.signal,
         ...options,
       });
       if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
       return response;
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => window.setTimeout(resolve, 600 * (i + 1)));
+      await new Promise((resolve) => window.setTimeout(resolve, 400 * (i + 1)));
+    } finally {
+      window.clearTimeout(timer);
     }
   }
   throw lastError;
 }
 
-async function loadVideoByRanges(src) {
-  const head = await fetchWithRetry(src, { method: "HEAD" });
-  const total = Number(head.headers.get("content-length")) || 0;
-  if (!total) throw new Error("Missing content length");
-
-  const chunkSize = 32 * 1024 * 1024;
-  const parts = [];
-  let received = 0;
-  for (let start = 0; start < total; start += chunkSize) {
-    const end = Math.min(start + chunkSize - 1, total - 1);
-    const response = await fetchWithRetry(src, {
-      headers: { Range: `bytes=${start}-${end}` },
-    });
-    const buffer = await response.arrayBuffer();
-    parts.push(new Uint8Array(buffer));
-    received += buffer.byteLength;
-    setBootProgress(Math.min(100, (received / total) * 100));
-  }
-  setBootProgress(100);
-  return new Blob(parts, { type: "video/mp4" });
-}
-
-async function loadVideoAsBlob(src) {
-  setBootProgress(0);
-  const isRemote = /^https?:\/\//i.test(src);
-  if (isRemote) {
-    try {
-      return await loadVideoByRanges(src);
-    } catch (error) {
-      console.warn("Chunked download failed, retrying as one file", error);
-    }
-  }
-
+async function downloadVideoBlob(src) {
   const response = await fetchWithRetry(src);
   const total = Number(response.headers.get("content-length")) || 0;
   if (!response.body) return response.blob();
@@ -583,11 +563,36 @@ async function loadVideoAsBlob(src) {
     if (total > 0) {
       setBootProgress(Math.min(100, (received / total) * 100));
     } else {
-      setBootProgress(0, `${(received / (1024 * 1024)).toFixed(0)} MB`);
+      setBootProgress(Math.min(99, (received / (1024 * 1024)) * 0.06), `${(received / (1024 * 1024)).toFixed(0)} MB`);
     }
   }
   setBootProgress(100);
   return new Blob(chunks, { type: "video/mp4" });
+}
+
+async function loadVideoAsBlob(src) {
+  setBootProgress(1, "Connecting…");
+  const candidates = [];
+  const add = (value) => {
+    const next = resolveVideoSrc(value);
+    if (next && !candidates.includes(next)) candidates.push(next);
+  };
+  add(src);
+  if (/^https?:\/\//i.test(src)) {
+    add("https://designscaffold.com/hero-scrub.mp4");
+  }
+
+  let lastError;
+  for (const candidate of candidates) {
+    try {
+      setBootProgress(1, "Connecting…");
+      return await downloadVideoBlob(candidate);
+    } catch (error) {
+      lastError = error;
+      console.warn("Video download failed", candidate, error);
+    }
+  }
+  throw lastError || new Error("Unable to load video");
 }
 
 function attachSource(blob) {
