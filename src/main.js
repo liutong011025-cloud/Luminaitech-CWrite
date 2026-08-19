@@ -1,25 +1,3 @@
-// 本地用 /hero-play.mp4；线上固定走已上传的压缩播放版，避开 1.7GB 全 I 帧
-function resolveVideoSrc(src) {
-  const raw = String(src || "").trim();
-  if (!raw) return "/hero-play.mp4";
-  if (/^https?:\/\//i.test(raw) || raw.startsWith("/")) return raw;
-  return `https://${raw.replace(/^\/+/, "")}`;
-}
-
-function isLocalHost() {
-  return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-}
-
-function pickVideoSrc() {
-  if (isLocalHost()) return "/hero-play.mp4";
-  const env = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "");
-  if (env && /^https?:\/\//i.test(env) && !/hero-scrub\.mp4/i.test(env) && !/[?&]v=/.test(env)) {
-    return env;
-  }
-  return "https://designscaffold.com/hero-play.mp4";
-}
-
-const VIDEO_SRC = pickVideoSrc();
 const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
 const MEDAL_SFX_SRC = "/medal-hover.mp3";
 const MUTE_KEY = "cwrite-home-muted";
@@ -107,10 +85,10 @@ const LOADING_QUOTES = [
   },
 ];
 /**
- * 片长约 46 秒。下滑播放到下一停顿点，上滑跳回上一停顿点。
- * 不再逐帧 scrub，因此可用普通压缩视频，不必下载 1.7GB 全 I 帧。
+ * 原片拆成 4 段，每段小于 GitHub 25MB，跟随仓库部署，同源加载。
+ * 下滑播放当前段，播完再滑进入下一段。
  */
-const KEYFRAMES = [0, 6.06, 14.17, 21.24, 27.15, 35.08, 44.12];
+const HERO_CLIPS = ["/hero-1.mp4", "/hero-2.mp4", "/hero-3.mp4", "/hero-4.mp4"];
 
 const FEATURES = [
   {
@@ -270,14 +248,14 @@ const muteBtn = document.querySelector("#mute-btn");
 const muteIcon = document.querySelector("#mute-icon");
 const navItems = [...document.querySelectorAll(".nav-item")];
 
-let duration = 0;
+let clipIndex = 0;
 let ready = false;
-let keyIndex = 0;
 let playing = false;
 let playRaf = 0;
 let touchStartY = 0;
 let stepCooldownUntil = 0;
 let playWatch = null;
+let preloadEl = null;
 let bgm = null;
 let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
@@ -427,17 +405,32 @@ function renderStaticContent() {
   ).join("");
 }
 
-function keyTimes() {
-  const last = Math.max(0, duration - 0.04);
-  return KEYFRAMES.map((time) => clamp(time, 0, last));
+function lastClipIndex() {
+  return HERO_CLIPS.length - 1;
 }
 
-function lastKeyIndex() {
-  return keyTimes().length - 1;
+function atClipEnd() {
+  return Boolean(video.ended || (video.duration && video.currentTime >= video.duration - 0.08));
 }
 
 function syncScrollLock() {
-  document.body.classList.toggle("is-intro-locked", ready && keyIndex < lastKeyIndex());
+  document.body.classList.toggle(
+    "is-intro-locked",
+    ready && !(clipIndex >= lastClipIndex() && atClipEnd()),
+  );
+}
+
+function preloadClip(index) {
+  if (index < 0 || index > lastClipIndex()) return;
+  if (!preloadEl) {
+    preloadEl = document.createElement("video");
+    preloadEl.muted = true;
+    preloadEl.preload = "auto";
+    preloadEl.playsInline = true;
+  }
+  if (preloadEl.dataset.clip === String(index)) return;
+  preloadEl.dataset.clip = String(index);
+  preloadEl.src = HERO_CLIPS[index];
 }
 
 function finishPlay() {
@@ -453,68 +446,91 @@ function finishPlay() {
   }
   stepCooldownUntil = Date.now() + 420;
   syncScrollLock();
-  scrollCue?.classList.toggle("is-gone", keyIndex > 0);
+  scrollCue?.classList.toggle("is-gone", clipIndex > 0 || atClipEnd());
   updateActiveNav();
+  preloadClip(clipIndex + 1);
 }
 
-function playToIndex(next) {
-  if (!ready || !duration) return;
-  const times = keyTimes();
-  next = clamp(Math.round(next), 0, times.length - 1);
-  if (playing) return;
-  const target = times[next];
-  if (next === keyIndex && Math.abs(video.currentTime - target) < 0.12) return;
-
-  if (REDUCED_MOTION || next < keyIndex) {
-    video.pause();
-    video.currentTime = target;
-    keyIndex = next;
-    finishPlay();
-    return;
-  }
-
-  playing = true;
-  const stopAtTarget = () => {
-    if (!playing) return;
-    if (video.currentTime < target - 0.05 && !video.ended) return;
-    video.pause();
-    keyIndex = next;
-    finishPlay();
-  };
-
-  playWatch = stopAtTarget;
-  video.addEventListener("timeupdate", stopAtTarget);
-  video.addEventListener("ended", stopAtTarget);
-  void video.play().catch(() => {
-    keyIndex = next;
-    finishPlay();
+function loadClip(index, atEnd = false) {
+  return new Promise((resolve, reject) => {
+    const applyHead = () => {
+      video.pause();
+      if (atEnd && video.duration) video.currentTime = Math.max(0, video.duration - 0.04);
+      else video.currentTime = 0;
+    };
+    if (clipIndex === index && video.readyState >= 2) {
+      applyHead();
+      resolve();
+      return;
+    }
+    const onReady = () => {
+      applyHead();
+      resolve();
+    };
+    const onError = () => reject(new Error("Unable to load video"));
+    video.addEventListener("loadeddata", onReady, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    clipIndex = index;
+    video.src = HERO_CLIPS[index];
+    preloadClip(index + 1);
   });
 }
 
-function stepIntro(direction) {
-  if (playing || Date.now() < stepCooldownUntil) return;
-  playToIndex(keyIndex + direction);
+function playCurrentClip() {
+  if (playing) return;
+  playing = true;
+  const stopAtEnd = () => {
+    if (!playing) return;
+    if (!atClipEnd()) return;
+    video.pause();
+    finishPlay();
+  };
+  playWatch = stopAtEnd;
+  video.addEventListener("timeupdate", stopAtEnd);
+  video.addEventListener("ended", stopAtEnd);
+  void video.play().catch(() => finishPlay());
+}
+
+async function stepIntro(direction) {
+  if (playing || Date.now() < stepCooldownUntil || !ready) return;
+  if (direction > 0) {
+    if (!atClipEnd()) {
+      playCurrentClip();
+      return;
+    }
+    if (clipIndex >= lastClipIndex()) return;
+    await loadClip(clipIndex + 1);
+    playCurrentClip();
+    return;
+  }
+  if (clipIndex <= 0) {
+    video.pause();
+    video.currentTime = 0;
+    finishPlay();
+    return;
+  }
+  await loadClip(clipIndex - 1, true);
+  finishPlay();
 }
 
 function onIntroWheel(event) {
   if (!ready) return;
   const atTop = window.scrollY <= 2;
-  const last = lastKeyIndex();
   if (!atTop) return;
   if (playing || Date.now() < stepCooldownUntil) {
-    if (keyIndex < last || event.deltaY < 0) event.preventDefault();
+    if (clipIndex < lastClipIndex() || event.deltaY < 0) event.preventDefault();
     return;
   }
   if (Math.abs(event.deltaY) < 18) return;
   const down = event.deltaY > 0;
-  if (down && keyIndex < last) {
+  if (down && (clipIndex < lastClipIndex() || !atClipEnd())) {
     event.preventDefault();
-    stepIntro(1);
+    void stepIntro(1);
     return;
   }
-  if (!down && keyIndex > 0) {
+  if (!down && (clipIndex > 0 || video.currentTime > 0.05)) {
     event.preventDefault();
-    stepIntro(-1);
+    void stepIntro(-1);
   }
 }
 
@@ -528,26 +544,24 @@ function onIntroTouchEnd(event) {
   const dy = touchStartY - y;
   if (Math.abs(dy) < 48) return;
   const atTop = window.scrollY <= 2;
-  const last = lastKeyIndex();
-  if (dy > 0 && atTop && keyIndex < last) {
-    stepIntro(1);
+  if (dy > 0 && atTop && (clipIndex < lastClipIndex() || !atClipEnd())) {
+    void stepIntro(1);
     return;
   }
-  if (dy < 0 && atTop && keyIndex > 0) stepIntro(-1);
+  if (dy < 0 && atTop && (clipIndex > 0 || video.currentTime > 0.05)) void stepIntro(-1);
 }
 
 function onIntroKey(event) {
   if (!ready || playing || Date.now() < stepCooldownUntil) return;
   const atTop = window.scrollY <= 2;
-  const last = lastKeyIndex();
-  if (["ArrowDown", "PageDown", " "].includes(event.key) && atTop && keyIndex < last) {
+  if (["ArrowDown", "PageDown", " "].includes(event.key) && atTop && (clipIndex < lastClipIndex() || !atClipEnd())) {
     event.preventDefault();
-    stepIntro(1);
+    void stepIntro(1);
     return;
   }
-  if (["ArrowUp", "PageUp"].includes(event.key) && atTop && keyIndex > 0) {
+  if (["ArrowUp", "PageUp"].includes(event.key) && atTop && (clipIndex > 0 || video.currentTime > 0.05)) {
     event.preventDefault();
-    stepIntro(-1);
+    void stepIntro(-1);
   }
 }
 
@@ -567,107 +581,6 @@ function updateActiveNav() {
   }
   navItems.forEach((item) => {
     item.classList.toggle("is-active", item.dataset.section === active);
-  });
-}
-
-function videoCandidates(src) {
-  const list = [];
-  const add = (value) => {
-    const next = resolveVideoSrc(value);
-    if (!next || list.includes(next)) return;
-    try {
-      const url = new URL(next, window.location.origin);
-      if (url.hostname === "video.designscaffold.com") return;
-      if (/\.r2\.dev$/i.test(url.hostname)) return;
-    } catch {
-      return;
-    }
-    list.push(next);
-  };
-  if (isLocalHost()) add("/hero-play.mp4");
-  add(src);
-  add("https://designscaffold.com/hero-play.mp4");
-  return list;
-}
-
-function attachStream(src) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const onReady = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve();
-    };
-    const onError = () => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(new Error("Unable to load video"));
-    };
-    const onProgress = () => {
-      if (!video.duration || !video.buffered.length) return;
-      const end = video.buffered.end(video.buffered.length - 1);
-      setBootProgress(Math.min(90, (end / video.duration) * 100), "Loading…");
-    };
-    const cleanup = () => {
-      video.removeEventListener("loadedmetadata", onReady);
-      video.removeEventListener("loadeddata", onReady);
-      video.removeEventListener("canplay", onReady);
-      video.removeEventListener("error", onError);
-      video.removeEventListener("progress", onProgress);
-    };
-    video.addEventListener("loadedmetadata", onReady, { once: true });
-    video.addEventListener("loadeddata", onReady, { once: true });
-    video.addEventListener("canplay", onReady, { once: true });
-    video.addEventListener("error", onError, { once: true });
-    video.addEventListener("progress", onProgress);
-    video.preload = "auto";
-    video.src = src;
-  });
-}
-
-async function loadVideo(src) {
-  setBootProgress(5, "Loading…");
-  const candidates = videoCandidates(src);
-  let lastError;
-  for (const candidate of candidates) {
-    try {
-      setBootProgress(8, "Loading…");
-      await attachStream(candidate);
-      return;
-    } catch (error) {
-      lastError = error;
-      console.warn("Video load failed", candidate, error);
-    }
-  }
-  throw lastError || new Error("Unable to load video");
-}
-
-function waitForBuffer(seconds) {
-  return new Promise((resolve) => {
-    const needed = Math.min(seconds, Math.max(0.4, (video.duration || seconds) * 0.08));
-    const readyEnough = () => {
-      if (!video.buffered.length) return false;
-      return video.buffered.end(0) >= needed;
-    };
-    if (readyEnough()) {
-      resolve();
-      return;
-    }
-    const onProgress = () => {
-      const end = video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0;
-      if (video.duration) setBootProgress(Math.min(99, (end / video.duration) * 100), "Loading…");
-      if (readyEnough()) {
-        video.removeEventListener("progress", onProgress);
-        resolve();
-      }
-    };
-    video.addEventListener("progress", onProgress);
-    window.setTimeout(() => {
-      video.removeEventListener("progress", onProgress);
-      resolve();
-    }, 6000);
   });
 }
 
@@ -816,13 +729,11 @@ function setupMedalPhysics() {
 }
 
 function bindVideo() {
-  duration = Number.isFinite(video.duration) ? video.duration : 0;
   video.pause();
   video.currentTime = 0;
-  keyIndex = 0;
+  clipIndex = 0;
   playing = false;
-  queuedIndex = -1;
-  ready = duration > 0;
+  ready = true;
 
   window.addEventListener("wheel", onIntroWheel, { passive: false });
   window.addEventListener("keydown", onIntroKey);
@@ -837,13 +748,13 @@ function bindVideo() {
       if (!section || !ready) return;
       if (section === "intro") {
         window.scrollTo({ top: 0, behavior: "smooth" });
-        playToIndex(0);
+        void loadClip(0);
         return;
       }
       video.pause();
-      keyIndex = lastKeyIndex();
-      video.currentTime = keyTimes()[keyIndex];
-      syncScrollLock();
+      void loadClip(lastClipIndex(), true).then(() => {
+        syncScrollLock();
+      });
     });
   });
 
@@ -859,8 +770,8 @@ async function start() {
   setupMedalPhysics();
   startBootQuotes();
   try {
-    await loadVideo(VIDEO_SRC);
-    await waitForBuffer(4);
+    setBootProgress(12, "Loading…");
+    await loadClip(0);
     setBootProgress(100);
     bindVideo();
   } catch (error) {
