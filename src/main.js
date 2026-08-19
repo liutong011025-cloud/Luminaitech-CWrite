@@ -1,6 +1,7 @@
 // 本地用 /hero-scrub.mp4；上线把大视频放到 CDN/对象存储，在 Vercel 配 VITE_VIDEO_SRC
 const VIDEO_SRC = import.meta.env.VITE_VIDEO_SRC || "/hero-scrub.mp4";
 const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
+const MEDAL_SFX_SRC = "/medal-hover.mp3";
 const MUTE_KEY = "cwrite-home-muted";
 const REDUCED_MOTION = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const LOADING_QUOTES = [
@@ -262,6 +263,7 @@ let ready = false;
 let rafId = 0;
 let objectUrl = "";
 let bgm = null;
+let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
 let quoteTimer = 0;
 let quoteHideTimers = [];
@@ -566,13 +568,15 @@ function updateMuteUi() {
 }
 
 function applyMuteState() {
-  if (!bgm) return;
-  bgm.muted = isMuted;
-  if (isMuted) {
-    bgm.pause();
-  } else {
-    void bgm.play().catch(() => {});
+  if (bgm) {
+    bgm.muted = isMuted;
+    if (isMuted) {
+      bgm.pause();
+    } else {
+      void bgm.play().catch(() => {});
+    }
   }
+  if (medalSfx) medalSfx.muted = isMuted;
   localStorage.setItem(MUTE_KEY, String(isMuted));
   updateMuteUi();
 }
@@ -582,6 +586,9 @@ function setupAudio() {
   bgm.loop = true;
   bgm.volume = 0.3;
   bgm.preload = "auto";
+  medalSfx = new Audio(MEDAL_SFX_SRC);
+  medalSfx.preload = "auto";
+  medalSfx.volume = 1;
   updateMuteUi();
   applyMuteState();
 
@@ -601,13 +608,25 @@ function setupAudio() {
   });
 }
 
+function playMedalSfx() {
+  if (isMuted || !medalSfx) return;
+  medalSfx.currentTime = 0;
+  medalSfx.volume = 1;
+  void medalSfx.play().catch(() => {});
+}
+
 function setupMedalPhysics() {
-  if (REDUCED_MOTION) return;
   const slots = document.querySelectorAll(".medal-slot");
   slots.forEach((slot) => {
     const hang = slot.querySelector(".medal-hang");
     const swing = slot.querySelector(".medal-swing");
-    if (!hang || !swing) return;
+    if (!hang) return;
+
+    hang.addEventListener("pointerenter", () => {
+      playMedalSfx();
+    });
+
+    if (REDUCED_MOTION || !swing) return;
 
     let angle = 0;
     let velocity = 0;
@@ -704,6 +723,10 @@ window.addEventListener("beforeunload", () => {
   if (bgm) {
     bgm.pause();
     bgm.src = "";
+  }
+  if (medalSfx) {
+    medalSfx.pause();
+    medalSfx.src = "";
   }
 });
 
