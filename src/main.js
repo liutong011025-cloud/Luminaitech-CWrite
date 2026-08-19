@@ -10,16 +10,13 @@ function isLocalHost() {
   return /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
 }
 
-function cacheBust(src) {
-  if (!src || src.includes("?")) return src;
-  return `${src}?v=20260819`;
-}
-
 function pickVideoSrc() {
-  const env = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "");
   if (isLocalHost()) return "/hero-play.mp4";
-  if (env && /^https?:\/\//i.test(env) && !/hero-scrub\.mp4/i.test(env)) return cacheBust(env);
-  return cacheBust("https://designscaffold.com/hero-play.mp4");
+  const env = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "");
+  if (env && /^https?:\/\//i.test(env) && !/hero-scrub\.mp4/i.test(env) && !/[?&]v=/.test(env)) {
+    return env;
+  }
+  return "https://designscaffold.com/hero-play.mp4";
 }
 
 const VIDEO_SRC = pickVideoSrc();
@@ -589,14 +586,13 @@ function videoCandidates(src) {
   };
   if (isLocalHost()) add("/hero-play.mp4");
   add(src);
-  add(cacheBust("https://designscaffold.com/hero-play.mp4"));
+  add("https://designscaffold.com/hero-play.mp4");
   return list;
 }
 
 function attachStream(src) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const timer = window.setTimeout(() => onError(), 15000);
     const onReady = () => {
       if (settled) return;
       settled = true;
@@ -615,18 +611,19 @@ function attachStream(src) {
       setBootProgress(Math.min(90, (end / video.duration) * 100), "Loading…");
     };
     const cleanup = () => {
-      window.clearTimeout(timer);
+      video.removeEventListener("loadedmetadata", onReady);
       video.removeEventListener("loadeddata", onReady);
       video.removeEventListener("canplay", onReady);
       video.removeEventListener("error", onError);
       video.removeEventListener("progress", onProgress);
     };
+    video.addEventListener("loadedmetadata", onReady, { once: true });
     video.addEventListener("loadeddata", onReady, { once: true });
     video.addEventListener("canplay", onReady, { once: true });
     video.addEventListener("error", onError, { once: true });
     video.addEventListener("progress", onProgress);
+    video.preload = "auto";
     video.src = src;
-    video.load();
   });
 }
 
