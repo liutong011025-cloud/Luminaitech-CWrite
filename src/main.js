@@ -443,11 +443,11 @@ function clipBufferedRatio(el) {
 }
 
 function updateBootFromBuffers() {
+  if (boot.classList.contains("is-done")) return;
   const needed = clipVideos.slice(0, BOOT_READY_COUNT);
   if (!needed.length) return;
-  const pct =
-    (needed.reduce((sum, el) => sum + clipBufferedRatio(el), 0) / needed.length) * 96;
-  bootShown = Math.max(bootShown, pct);
+  const pct = (needed.reduce((sum, el) => sum + clipBufferedRatio(el), 0) / needed.length) * 100;
+  bootShown = Math.max(bootShown, Math.min(99, pct));
   setBootProgress(bootShown, `${Math.round(bootShown)}%`);
 }
 
@@ -492,9 +492,15 @@ async function loadHeroClips() {
   bootShown = 0;
   setBootProgress(2, "Loading…");
   setupClipVideos();
-  clipReady = clipVideos.map((el, index) => waitForClipReady(el, HERO_CLIPS[index]));
+  clipReady = HERO_CLIPS.map((src, index) => {
+    if (index >= BOOT_READY_COUNT) return null;
+    return waitForClipReady(clipVideos[index], src);
+  });
   await Promise.all(clipReady.slice(0, BOOT_READY_COUNT));
-  updateBootFromBuffers();
+  setBootProgress(100, "100%");
+  for (let index = BOOT_READY_COUNT; index < HERO_CLIPS.length; index += 1) {
+    clipReady[index] = waitForClipReady(clipVideos[index], HERO_CLIPS[index]).catch(() => {});
+  }
 }
 
 function setActiveClip(index, atEnd = false) {
