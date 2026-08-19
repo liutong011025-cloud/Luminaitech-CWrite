@@ -563,6 +563,7 @@ function attachSource(blob) {
 }
 
 function updateMuteUi() {
+  if (!muteBtn || !muteIcon) return;
   muteIcon.src = isMuted ? "/about/speakeroff.webp" : "/about/speaker%20on.webp";
   muteBtn.setAttribute("aria-label", isMuted ? "Unmute" : "Mute");
 }
@@ -618,7 +619,7 @@ function setupAudio() {
   window.addEventListener("keydown", unlock);
   window.addEventListener("wheel", unlock, { passive: true });
 
-  muteBtn.addEventListener("click", () => {
+  muteBtn?.addEventListener("click", () => {
     isMuted = !isMuted;
     applyMuteState();
   });
