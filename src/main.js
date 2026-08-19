@@ -90,7 +90,7 @@ const LOADING_QUOTES = [
  * 网页端最高可用清晰度，并保持滚动跟手。不加锐化。
  */
 const FPS = 120;
-const SOURCE_FRAME_COUNT = 5408;
+const SOURCE_FRAME_COUNT = 5504;
 const SCRUB_FPS = 20;
 
 const FEATURES = [
