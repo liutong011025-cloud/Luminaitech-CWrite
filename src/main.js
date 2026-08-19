@@ -726,15 +726,56 @@ function bindVideo() {
   syncFromScroll();
 }
 
+function attachRemote(src) {
+  setBootProgress(8, "Connecting…");
+  video.preload = "auto";
+  video.src = src;
+  video.load();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (ok, err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (ok) resolve();
+      else reject(err || new Error("Video decode failed"));
+    };
+    const onMeta = () => {
+      setBootProgress(70, "Buffering…");
+    };
+    const onReady = () => {
+      setBootProgress(100);
+      finish(true);
+    };
+    const onError = () => finish(false, new Error("Video decode failed"));
+    const cleanup = () => {
+      video.removeEventListener("loadedmetadata", onMeta);
+      video.removeEventListener("loadeddata", onReady);
+      video.removeEventListener("error", onError);
+    };
+    video.addEventListener("loadedmetadata", onMeta);
+    video.addEventListener("loadeddata", onReady, { once: true });
+    video.addEventListener("error", onError, { once: true });
+    window.setTimeout(() => {
+      if (!settled && video.readyState >= 1) finish(true);
+    }, 8000);
+  });
+}
+
 async function start() {
   renderStaticContent();
   setupAudio();
   setupMedalPhysics();
   startBootQuotes();
   try {
-    const blob = await loadVideoAsBlob(VIDEO_SRC);
-    setBootProgress(100, "Decoding…");
-    await attachSource(blob);
+    const isRemote = /^https?:\/\//i.test(VIDEO_SRC);
+    if (isRemote) {
+      await attachRemote(VIDEO_SRC);
+    } else {
+      const blob = await loadVideoAsBlob(VIDEO_SRC);
+      setBootProgress(100, "Decoding…");
+      await attachSource(blob);
+    }
     bindVideo();
   } catch (error) {
     console.error(error);
