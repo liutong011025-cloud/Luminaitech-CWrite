@@ -4,6 +4,73 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CWrite — Luminaitech</title>
+    <script>
+      (function () {
+        var clips = ["/hero-1.mp4", "/hero-2.mp4", "/hero-3.mp4"];
+        var sizes = [11954205, 14106458, 12903537];
+        var loaded = [0, 0, 0];
+        var totals = sizes.slice();
+        var pct = 0;
+        var listeners = [];
+
+        function paint() {
+          var status = document.getElementById("boot-status");
+          var fill = document.getElementById("boot-progress-fill");
+          if (status) status.textContent = Math.round(pct) + "%";
+          if (fill) fill.style.width = pct + "%";
+          for (var i = 0; i < listeners.length; i += 1) listeners[i](pct);
+        }
+
+        function tick() {
+          var received = loaded[0] + loaded[1] + loaded[2];
+          var total = totals[0] + totals[1] + totals[2];
+          pct = total ? Math.min(99, (received / total) * 100) : 0;
+          paint();
+        }
+
+        var blobs = clips.map(function (src, index) {
+          return new Promise(function (resolve, reject) {
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", src);
+            xhr.responseType = "blob";
+            xhr.onprogress = function (event) {
+              loaded[index] = event.loaded;
+              totals[index] =
+                event.lengthComputable && event.total
+                  ? event.total
+                  : Math.max(sizes[index], event.loaded);
+              tick();
+            };
+            xhr.onload = function () {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                loaded[index] = xhr.response.size;
+                totals[index] = xhr.response.size;
+                tick();
+                resolve(xhr.response);
+                return;
+              }
+              reject(new Error("Unable to load video"));
+            };
+            xhr.onerror = function () {
+              reject(new Error("Unable to load video"));
+            };
+            xhr.send();
+          });
+        });
+
+        window.__heroBoot = {
+          blobs: Promise.all(blobs).then(function (files) {
+            pct = 100;
+            paint();
+            return files;
+          }),
+          onProgress: function (fn) {
+            listeners.push(fn);
+            fn(pct);
+          },
+        };
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/Cagenthang.png" />
     <link rel="apple-touch-icon" href="/Cagenthang.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -13,10 +80,6 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/src/styles.css" />
-    <link rel="preload" href="/hero-1.mp4" as="video" type="video/mp4" />
-    <link rel="preload" href="/hero-2.mp4" as="video" type="video/mp4" />
-    <link rel="preload" href="/hero-3.mp4" as="video" type="video/mp4" />
-    <link rel="preload" href="/hero-4.mp4" as="video" type="video/mp4" />
   </head>
   <body>
     <header class="site-header" id="site-header">
@@ -63,7 +126,7 @@
             class="hero-video"
             muted
             playsinline
-            preload="auto"
+            preload="none"
             aria-hidden="true"
           ></video>
           <div class="scroll-cue" id="scroll-cue" aria-hidden="true">
