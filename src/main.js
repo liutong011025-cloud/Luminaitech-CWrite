@@ -263,7 +263,6 @@ let touchStartY = 0;
 let stepCooldownUntil = 0;
 let playWatch = null;
 let clipVideos = [];
-let clipUrls = [];
 let bgm = null;
 let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
@@ -413,7 +412,7 @@ function renderStaticContent() {
   ).join("");
 }
 
-const PLAYBACK_RATE = 1.8;
+const PLAYBACK_RATE = 2;
 let bootShown = 0;
 
 function lastClipIndex() {
@@ -436,91 +435,62 @@ function syncScrollLock() {
   );
 }
 
-function reportBootBytes(received, total) {
-  if (total <= 0) return;
-  const pct = Math.min(96, (received / total) * 100);
+function clipBufferedRatio(el) {
+  if (!el.duration || !el.buffered.length) return 0;
+  return Math.min(1, el.buffered.end(el.buffered.length - 1) / el.duration);
+}
+
+function updateBootFromBuffers() {
+  if (!clipVideos.length) return;
+  const pct =
+    (clipVideos.reduce((sum, el) => sum + clipBufferedRatio(el), 0) / clipVideos.length) * 96;
   bootShown = Math.max(bootShown, pct);
   setBootProgress(bootShown, `${Math.round(bootShown)}%`);
 }
 
-async function downloadClip(src, onBytes) {
-  const response = await fetch(src);
-  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
-  const total = Number(response.headers.get("content-length")) || 0;
-  if (!response.body) {
-    const blob = await response.blob();
-    onBytes(blob.size, total || blob.size);
-    return blob;
-  }
-  const reader = response.body.getReader();
-  const chunks = [];
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    onBytes(value.byteLength, total);
-  }
-  return new Blob(chunks, { type: "video/mp4" });
+function waitForClipReady(el, src) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      el.removeEventListener("progress", onProgress);
+      resolve();
+    };
+    const onProgress = () => {
+      updateBootFromBuffers();
+      if (clipBufferedRatio(el) >= 0.98) finish();
+    };
+    el.addEventListener("canplaythrough", finish, { once: true });
+    el.addEventListener("progress", onProgress);
+    el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
+    el.preload = "auto";
+    el.muted = true;
+    el.playsInline = true;
+    el.playbackRate = PLAYBACK_RATE;
+    el.src = src;
+  });
 }
 
-async function loadAllClips() {
-  bootShown = 0;
-  setBootProgress(1, "0%");
-  const received = HERO_CLIPS.map(() => 0);
-  const totals = HERO_CLIPS.map(() => 0);
-  const tick = () => {
-    reportBootBytes(
-      received.reduce((sum, value) => sum + value, 0),
-      totals.reduce((sum, value) => sum + value, 0),
-    );
-  };
-
-  const blobs = await Promise.all(
-    HERO_CLIPS.map(async (src, index) => {
-      const blob = await downloadClip(src, (bytes, total) => {
-        received[index] += bytes;
-        if (total) totals[index] = total;
-        tick();
-      });
-      if (!totals[index]) totals[index] = blob.size;
-      tick();
-      return blob;
-    }),
-  );
-
-  clipUrls = blobs.map((blob) => URL.createObjectURL(blob));
-  setBootProgress(98, "Decoding…");
-
+function setupClipVideos() {
   const first = document.querySelector("#hero-video");
   const sticky = document.querySelector(".scrub-sticky");
   clipVideos = [first];
-  for (let i = 1; i < clipUrls.length; i += 1) {
+  for (let i = 1; i < HERO_CLIPS.length; i += 1) {
     const el = first.cloneNode(true);
     el.removeAttribute("id");
     el.classList.add("is-off");
     sticky.insertBefore(el, first.nextSibling);
     clipVideos.push(el);
   }
+}
 
-  await Promise.all(
-    clipVideos.map(
-      (el, index) =>
-        new Promise((resolve, reject) => {
-          let settled = false;
-          const ok = () => {
-            if (settled) return;
-            settled = true;
-            resolve();
-          };
-          el.addEventListener("canplaythrough", ok, { once: true });
-          el.addEventListener("loadeddata", ok, { once: true });
-          el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
-          el.preload = "auto";
-          el.playbackRate = PLAYBACK_RATE;
-          el.src = clipUrls[index];
-        }),
-    ),
-  );
+async function loadHeroClips() {
+  bootShown = 0;
+  setBootProgress(2, "Loading…");
+  setupClipVideos();
+  await Promise.all(clipVideos.map((el, index) => waitForClipReady(el, HERO_CLIPS[index])));
+  updateBootFromBuffers();
 }
 
 function setActiveClip(index, atEnd = false) {
@@ -855,7 +825,7 @@ async function start() {
   setupMedalPhysics();
   startBootQuotes();
   try {
-    await loadAllClips();
+    await loadHeroClips();
     setActiveClip(0);
     setBootProgress(100);
     bindVideo();
@@ -868,7 +838,6 @@ async function start() {
 
 window.addEventListener("beforeunload", () => {
   if (playRaf) cancelAnimationFrame(playRaf);
-  clipUrls.forEach((url) => URL.revokeObjectURL(url));
   if (bgm) {
     bgm.pause();
     bgm.src = "";
