@@ -1,12 +1,12 @@
-// 本地用 /hero-scrub.mp4；上线把大视频放到 CDN/对象存储，在 Vercel 配 VITE_VIDEO_SRC
+// 本地用 /hero-play.mp4；上线把压缩播放版放到 CDN，在 Vercel 配 VITE_VIDEO_SRC
 function resolveVideoSrc(src) {
   const raw = String(src || "").trim();
-  if (!raw) return "/hero-scrub.mp4";
+  if (!raw) return "/hero-play.mp4";
   if (/^https?:\/\//i.test(raw) || raw.startsWith("/")) return raw;
   return `https://${raw.replace(/^\/+/, "")}`;
 }
 
-const VIDEO_SRC = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "/hero-scrub.mp4");
+const VIDEO_SRC = resolveVideoSrc(import.meta.env.VITE_VIDEO_SRC || "/hero-play.mp4");
 const BGM_SRC = "/about/yoshiyuki_tatsuya-pixel-hearts-foreverwav-427383.mp3";
 const MEDAL_SFX_SRC = "/medal-hover.mp3";
 const MUTE_KEY = "cwrite-home-muted";
@@ -94,12 +94,10 @@ const LOADING_QUOTES = [
   },
 ];
 /**
- * 原片 8K → 3840 宽 / 120fps 全 I 帧 + fastdecode：
- * 网页端最高可用清晰度，并保持滚动跟手。不加锐化。
+ * 片长约 46 秒。下滑播放到下一停顿点，上滑跳回上一停顿点。
+ * 不再逐帧 scrub，因此可用普通压缩视频，不必下载 1.7GB 全 I 帧。
  */
-const FPS = 120;
-const SOURCE_FRAME_COUNT = 5504;
-const SCRUB_FPS = 20;
+const KEYFRAMES = [0, 6.06, 14.17, 21.24, 27.15, 35.08, 44.12];
 
 const FEATURES = [
   {
@@ -260,15 +258,12 @@ const muteIcon = document.querySelector("#mute-icon");
 const navItems = [...document.querySelectorAll(".nav-item")];
 
 let duration = 0;
-let frameCount = 0;
-let seeking = false;
-let pendingTime = -1;
-let displayedTime = 0;
-let displayProgress = 0;
-let scrubVelocity = 0;
 let ready = false;
-let rafId = 0;
-let objectUrl = "";
+let keyIndex = 0;
+let playing = false;
+let playRaf = 0;
+let queuedIndex = -1;
+let touchStartY = 0;
 let bgm = null;
 let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
@@ -418,54 +413,141 @@ function renderStaticContent() {
   ).join("");
 }
 
-function getIntroProgress() {
-  const rect = intro.getBoundingClientRect();
-  const total = intro.offsetHeight - window.innerHeight;
-  if (total <= 0) return 0;
-  return clamp(-rect.top / total, 0, 1);
+function keyTimes() {
+  const last = Math.max(0, duration - 0.04);
+  return KEYFRAMES.map((time) => clamp(time, 0, last));
 }
 
-function progressToTime(progress) {
-  if (!duration || frameCount <= 1) return progress * duration;
-  const frame = Math.round(progress * (frameCount - 1));
-  return clamp(frame / FPS, 0, Math.max(0, duration - 1 / FPS));
+function lastKeyIndex() {
+  return keyTimes().length - 1;
 }
 
-let lastQueuedFrame = -1;
-
-function flushSeek() {
-  if (!duration || pendingTime < 0 || seeking) return;
-  const time = pendingTime;
-  const delta = Math.abs(time - displayedTime);
-  const minStep = Math.max(1, Math.round(FPS / SCRUB_FPS));
-  const step =
-    delta > 0.35 ? minStep * 4 : delta > 0.12 ? minStep * 2 : minStep;
-  const frame = Math.round((time * FPS) / step) * step;
-  const seekTime = clamp(frame / FPS, 0, Math.max(0, duration - 1 / FPS));
-  if (frame === lastQueuedFrame && delta < step / FPS) {
-    pendingTime = -1;
-    return;
-  }
-  if (Math.abs(displayedTime - seekTime) < 1 / SCRUB_FPS) {
-    pendingTime = -1;
-    return;
-  }
-  lastQueuedFrame = frame;
-  seeking = true;
-  try {
-    video.currentTime = seekTime;
-  } catch {
-    seeking = false;
-  }
+function syncScrollLock() {
+  document.body.classList.toggle("is-intro-locked", ready && keyIndex < lastKeyIndex());
 }
 
-function onSeeked() {
-  displayedTime = video.currentTime;
-  seeking = false;
-  if (pendingTime >= 0 && Math.abs(pendingTime - displayedTime) > 1 / SCRUB_FPS) {
-    flushSeek();
+function finishPlay() {
+  playing = false;
+  if (playRaf) {
+    cancelAnimationFrame(playRaf);
+    playRaf = 0;
+  }
+  syncScrollLock();
+  scrollCue?.classList.toggle("is-gone", keyIndex > 0);
+  updateActiveNav();
+  if (queuedIndex >= 0 && queuedIndex !== keyIndex) {
+    const next = queuedIndex;
+    queuedIndex = -1;
+    playToIndex(next);
   } else {
-    pendingTime = -1;
+    queuedIndex = -1;
+  }
+}
+
+function playToIndex(next) {
+  if (!ready || !duration) return;
+  const times = keyTimes();
+  next = clamp(Math.round(next), 0, times.length - 1);
+  if (playing) {
+    queuedIndex = next;
+    return;
+  }
+  const target = times[next];
+  if (next === keyIndex && Math.abs(video.currentTime - target) < 0.08) return;
+
+  if (REDUCED_MOTION || next <= keyIndex) {
+    video.pause();
+    video.currentTime = target;
+    keyIndex = next;
+    finishPlay();
+    return;
+  }
+
+  playing = true;
+  const startFrom = times[keyIndex];
+  const watch = () => {
+    if (!playing) return;
+    if (video.currentTime >= target - 0.04) {
+      video.pause();
+      video.currentTime = target;
+      keyIndex = next;
+      finishPlay();
+      return;
+    }
+    playRaf = requestAnimationFrame(watch);
+  };
+  const startPlay = () => {
+    void video
+      .play()
+      .then(() => {
+        playRaf = requestAnimationFrame(watch);
+      })
+      .catch(() => {
+        video.currentTime = target;
+        keyIndex = next;
+        finishPlay();
+      });
+  };
+
+  if (Math.abs(video.currentTime - startFrom) > 0.12) {
+    video.currentTime = startFrom;
+    video.addEventListener("seeked", startPlay, { once: true });
+    return;
+  }
+  startPlay();
+}
+
+function stepIntro(direction) {
+  playToIndex(keyIndex + direction);
+}
+
+function onIntroWheel(event) {
+  if (!ready) return;
+  const atTop = window.scrollY <= 2;
+  const last = lastKeyIndex();
+  const down = event.deltaY > 1;
+  const up = event.deltaY < -1;
+  if (down && atTop && keyIndex < last) {
+    event.preventDefault();
+    stepIntro(1);
+    return;
+  }
+  if (up && atTop && (keyIndex > 0 || playing)) {
+    event.preventDefault();
+    stepIntro(-1);
+  }
+}
+
+function onIntroTouchStart(event) {
+  touchStartY = event.touches[0]?.clientY ?? 0;
+}
+
+function onIntroTouchEnd(event) {
+  if (!ready) return;
+  const y = event.changedTouches[0]?.clientY ?? touchStartY;
+  const dy = touchStartY - y;
+  if (Math.abs(dy) < 48) return;
+  const atTop = window.scrollY <= 2;
+  const last = lastKeyIndex();
+  if (dy > 0 && atTop && keyIndex < last) {
+    stepIntro(1);
+    return;
+  }
+  if (dy < 0 && atTop && keyIndex > 0) stepIntro(-1);
+}
+
+function onIntroKey(event) {
+  if (!ready) return;
+  const atTop = window.scrollY <= 2;
+  const last = lastKeyIndex();
+  if (["ArrowDown", "PageDown", " "].includes(event.key) && atTop && keyIndex < last) {
+    event.preventDefault();
+    stepIntro(1);
+    return;
+  }
+  if (["ArrowUp", "PageUp"].includes(event.key) && atTop && keyIndex > 0) {
+    event.preventDefault();
+    stepIntro(-1);
   }
 }
 
@@ -488,173 +570,80 @@ function updateActiveNav() {
   });
 }
 
-function syncFromScroll() {
-  if (!ready || !duration) return;
-
-  const targetProgress = getIntroProgress();
-  // 离开 intro 后固定在片尾，避免无效 seek
-  if (targetProgress >= 0.999) {
-    displayProgress = 1;
-    scrubVelocity = 0;
-  } else if (REDUCED_MOTION) {
-    displayProgress = targetProgress;
-    scrubVelocity = 0;
-  } else {
-    const delta = targetProgress - displayProgress;
-    scrubVelocity += delta * 0.15;
-    scrubVelocity *= 0.84;
-    displayProgress = clamp(displayProgress + scrubVelocity, 0, 1);
-    if (Math.abs(delta) < 0.00008 && Math.abs(scrubVelocity) < 0.00008) {
-      displayProgress = targetProgress;
-      scrubVelocity = 0;
-    }
-  }
-
-  pendingTime = progressToTime(displayProgress);
-  flushSeek();
-  scrollCue?.classList.toggle("is-gone", targetProgress > 0.02);
-  updateActiveNav();
-}
-
-function frame() {
-  rafId = requestAnimationFrame(frame);
-  if (!ready) return;
-  syncFromScroll();
-}
-
-const EXPECTED_VIDEO_BYTES = 1793004720;
-const VIDEO_MIRRORS = [
-  "https://designscaffold.com/hero-scrub.mp4",
-  "https://ichingtcc.cn/hero-scrub.mp4",
-];
-const FIRST_BYTE_MS = 8000;
-const STALL_MS = 12000;
-
-function isUsableVideoSrc(src) {
-  try {
-    const url = new URL(src, window.location.origin);
-    if (url.hostname === "video.designscaffold.com") return false;
-    if (/\.r2\.dev$/i.test(url.hostname)) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function videoCandidates(src) {
   const list = [];
   const add = (value) => {
     const next = resolveVideoSrc(value);
-    if (!next || list.includes(next) || !isUsableVideoSrc(next)) return;
+    if (!next || list.includes(next)) return;
+    try {
+      const url = new URL(next, window.location.origin);
+      if (url.hostname === "video.designscaffold.com") return;
+      if (/\.r2\.dev$/i.test(url.hostname)) return;
+    } catch {
+      return;
+    }
     list.push(next);
   };
-  add(src);
-  VIDEO_MIRRORS.forEach(add);
+  add("/hero-play.mp4");
+  add("https://designscaffold.com/hero-play.mp4");
+  if (!/hero-scrub\.mp4/i.test(src)) add(src);
+  add("https://designscaffold.com/hero-scrub.mp4");
+  add("https://ichingtcc.cn/hero-scrub.mp4");
   return list;
 }
 
-function reportDownloadProgress(received, total) {
-  const size = total > 0 ? total : EXPECTED_VIDEO_BYTES;
-  const pct = Math.min(99, (received / size) * 100);
-  const mb = received / (1024 * 1024);
-  setBootProgress(pct, `${Math.round(pct)}% · ${mb.toFixed(0)} MB`);
-}
-
-async function downloadVideoBlob(src) {
-  const controller = new AbortController();
-  let gotByte = false;
-  const remote = /^https?:\/\//i.test(src);
-  const firstByteTimer = window.setTimeout(() => {
-    if (!gotByte) controller.abort();
-  }, remote ? FIRST_BYTE_MS : 60000);
-
-  const response = await fetch(src, {
-    mode: "cors",
-    credentials: "omit",
-    cache: "default",
-    signal: controller.signal,
-  }).finally(() => window.clearTimeout(firstByteTimer));
-
-  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
-
-  const headerTotal = Number(response.headers.get("content-length")) || 0;
-  const total = headerTotal || EXPECTED_VIDEO_BYTES;
-  if (!response.body) {
-    const blob = await response.blob();
-    setBootProgress(100);
-    return blob;
-  }
-
-  const reader = response.body.getReader();
-  const chunks = [];
-  let received = 0;
-  let lastTick = 0;
-  let stalled = false;
-  const stall = window.setInterval(() => {
-    if (!gotByte || received === lastTick) {
-      stalled = true;
-      controller.abort();
-    }
-    lastTick = received;
-  }, STALL_MS);
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      gotByte = true;
-      chunks.push(value);
-      received += value.byteLength;
-      reportDownloadProgress(received, total);
-    }
-  } finally {
-    window.clearInterval(stall);
-  }
-
-  if (stalled) throw new Error("Video download stalled");
-  if (headerTotal && received < headerTotal * 0.98) {
-    throw new Error(`Video too small: ${received}`);
-  }
-  setBootProgress(100);
-  return new Blob(chunks, { type: "video/mp4" });
-}
-
-async function loadVideoAsBlob(src) {
-  setBootProgress(0, "Connecting…");
-  const candidates = videoCandidates(src);
-  let lastError;
-  for (const candidate of candidates) {
-    try {
-      setBootProgress(0, "Connecting…");
-      return await downloadVideoBlob(candidate);
-    } catch (error) {
-      lastError = error;
-      console.warn("Video download failed", candidate, error);
-    }
-  }
-  throw lastError || new Error("Unable to load video");
-}
-
-function attachSource(blob) {
-  objectUrl = URL.createObjectURL(blob);
-  video.src = objectUrl;
-  video.load();
+function attachStream(src) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = window.setTimeout(() => onError(), 15000);
     const onReady = () => {
+      if (settled) return;
+      settled = true;
       cleanup();
       resolve();
     };
     const onError = () => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      reject(new Error("Video decode failed"));
+      reject(new Error("Unable to load video"));
+    };
+    const onProgress = () => {
+      if (!video.duration || !video.buffered.length) return;
+      const end = video.buffered.end(video.buffered.length - 1);
+      setBootProgress(Math.min(90, (end / video.duration) * 100), "Loading…");
     };
     const cleanup = () => {
-      video.removeEventListener("loadedmetadata", onReady);
+      window.clearTimeout(timer);
+      video.removeEventListener("loadeddata", onReady);
+      video.removeEventListener("canplay", onReady);
       video.removeEventListener("error", onError);
+      video.removeEventListener("progress", onProgress);
     };
-    video.addEventListener("loadedmetadata", onReady, { once: true });
+    video.addEventListener("loadeddata", onReady, { once: true });
+    video.addEventListener("canplay", onReady, { once: true });
     video.addEventListener("error", onError, { once: true });
+    video.addEventListener("progress", onProgress);
+    video.src = src;
+    video.load();
   });
+}
+
+async function loadVideo(src) {
+  setBootProgress(5, "Loading…");
+  const candidates = videoCandidates(src);
+  let lastError;
+  for (const candidate of candidates) {
+    try {
+      setBootProgress(8, "Loading…");
+      await attachStream(candidate);
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn("Video load failed", candidate, error);
+    }
+  }
+  throw lastError || new Error("Unable to load video");
 }
 
 function updateMuteUi() {
@@ -803,22 +792,40 @@ function setupMedalPhysics() {
 
 function bindVideo() {
   duration = Number.isFinite(video.duration) ? video.duration : 0;
-  frameCount = SOURCE_FRAME_COUNT || Math.max(1, Math.round(duration * FPS));
   video.pause();
   video.currentTime = 0;
-  displayedTime = 0;
-  pendingTime = -1;
-  displayProgress = 0;
-  scrubVelocity = 0;
+  keyIndex = 0;
+  playing = false;
+  queuedIndex = -1;
   ready = duration > 0;
 
-  video.addEventListener("seeked", onSeeked);
-  window.addEventListener("scroll", () => syncFromScroll(), { passive: true });
-  window.addEventListener("resize", () => syncFromScroll());
-  rafId = requestAnimationFrame(frame);
+  window.addEventListener("wheel", onIntroWheel, { passive: false });
+  window.addEventListener("keydown", onIntroKey);
+  window.addEventListener("scroll", updateActiveNav, { passive: true });
+  window.addEventListener("resize", updateActiveNav);
+  intro?.addEventListener("touchstart", onIntroTouchStart, { passive: true });
+  intro?.addEventListener("touchend", onIntroTouchEnd, { passive: true });
+
+  navItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      const section = item.dataset.section;
+      if (!section || !ready) return;
+      if (section === "intro") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        playToIndex(0);
+        return;
+      }
+      video.pause();
+      keyIndex = lastKeyIndex();
+      video.currentTime = keyTimes()[keyIndex];
+      syncScrollLock();
+    });
+  });
+
   stopBootQuotes();
   boot.classList.add("is-done");
-  syncFromScroll();
+  syncScrollLock();
+  updateActiveNav();
 }
 
 async function start() {
@@ -827,9 +834,8 @@ async function start() {
   setupMedalPhysics();
   startBootQuotes();
   try {
-    const blob = await loadVideoAsBlob(VIDEO_SRC);
-    setBootProgress(100, "Decoding…");
-    await attachSource(blob);
+    await loadVideo(VIDEO_SRC);
+    setBootProgress(100);
     bindVideo();
   } catch (error) {
     console.error(error);
@@ -839,8 +845,7 @@ async function start() {
 }
 
 window.addEventListener("beforeunload", () => {
-  if (objectUrl) URL.revokeObjectURL(objectUrl);
-  if (rafId) cancelAnimationFrame(rafId);
+  if (playRaf) cancelAnimationFrame(playRaf);
   if (bgm) {
     bgm.pause();
     bgm.src = "";
@@ -852,4 +857,3 @@ window.addEventListener("beforeunload", () => {
 });
 
 start();
-
