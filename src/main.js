@@ -85,8 +85,7 @@ const LOADING_QUOTES = [
   },
 ];
 /**
- * 原片拆成 4 段，每段小于 GitHub 25MB，跟随仓库部署，同源加载。
- * 下滑播放当前段，播完再滑进入下一段。
+ * 原片拆成 4 段（均小于 GitHub 25MB）。进页前全部下载并解码完毕。
  */
 const HERO_CLIPS = ["/hero-1.mp4", "/hero-2.mp4", "/hero-3.mp4", "/hero-4.mp4"];
 
@@ -238,7 +237,7 @@ const TEAM_BOTTOM = [
 ];
 
 const intro = document.querySelector("#intro");
-const video = document.querySelector("#hero-video");
+let video = document.querySelector("#hero-video");
 const boot = document.querySelector("#boot");
 const bootStatus = document.querySelector("#boot-status");
 const bootProgressFill = document.querySelector("#boot-progress-fill");
@@ -255,7 +254,8 @@ let playRaf = 0;
 let touchStartY = 0;
 let stepCooldownUntil = 0;
 let playWatch = null;
-let preloadEl = null;
+let clipVideos = [];
+let clipUrls = [];
 let bgm = null;
 let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
@@ -420,17 +420,99 @@ function syncScrollLock() {
   );
 }
 
-function preloadClip(index) {
-  if (index < 0 || index > lastClipIndex()) return;
-  if (!preloadEl) {
-    preloadEl = document.createElement("video");
-    preloadEl.muted = true;
-    preloadEl.preload = "auto";
-    preloadEl.playsInline = true;
+function reportBootBytes(received, total) {
+  const pct = total > 0 ? Math.min(96, (received / total) * 100) : 0;
+  setBootProgress(pct, `${Math.round(pct)}%`);
+}
+
+async function downloadClip(src, onBytes) {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
+  const total = Number(response.headers.get("content-length")) || 0;
+  if (!response.body) {
+    const blob = await response.blob();
+    onBytes(blob.size, total || blob.size);
+    return blob;
   }
-  if (preloadEl.dataset.clip === String(index)) return;
-  preloadEl.dataset.clip = String(index);
-  preloadEl.src = HERO_CLIPS[index];
+  const reader = response.body.getReader();
+  const chunks = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    onBytes(value.byteLength, total);
+  }
+  return new Blob(chunks, { type: "video/mp4" });
+}
+
+async function loadAllClips() {
+  setBootProgress(1, "0%");
+  const received = HERO_CLIPS.map(() => 0);
+  const totals = HERO_CLIPS.map(() => 0);
+  const tick = () => {
+    reportBootBytes(
+      received.reduce((sum, value) => sum + value, 0),
+      totals.reduce((sum, value) => sum + value, 0),
+    );
+  };
+
+  const blobs = await Promise.all(
+    HERO_CLIPS.map(async (src, index) => {
+      const blob = await downloadClip(src, (bytes, total) => {
+        received[index] += bytes;
+        if (total) totals[index] = total;
+        tick();
+      });
+      if (!totals[index]) totals[index] = blob.size;
+      tick();
+      return blob;
+    }),
+  );
+
+  clipUrls = blobs.map((blob) => URL.createObjectURL(blob));
+  setBootProgress(98, "Decoding…");
+
+  const first = document.querySelector("#hero-video");
+  const sticky = document.querySelector(".scrub-sticky");
+  clipVideos = [first];
+  for (let i = 1; i < clipUrls.length; i += 1) {
+    const el = first.cloneNode(true);
+    el.removeAttribute("id");
+    el.classList.add("is-off");
+    sticky.insertBefore(el, first.nextSibling);
+    clipVideos.push(el);
+  }
+
+  await Promise.all(
+    clipVideos.map(
+      (el, index) =>
+        new Promise((resolve, reject) => {
+          let settled = false;
+          const ok = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+          };
+          el.addEventListener("canplaythrough", ok, { once: true });
+          el.addEventListener("loadeddata", ok, { once: true });
+          el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
+          el.preload = "auto";
+          el.src = clipUrls[index];
+        }),
+    ),
+  );
+}
+
+function setActiveClip(index, atEnd = false) {
+  clipIndex = index;
+  clipVideos.forEach((el, i) => {
+    el.classList.toggle("is-off", i !== index);
+    if (i !== index) el.pause();
+  });
+  video = clipVideos[index];
+  video.pause();
+  if (atEnd && video.duration) video.currentTime = Math.max(0, video.duration - 0.04);
+  else video.currentTime = 0;
 }
 
 function finishPlay() {
@@ -448,32 +530,11 @@ function finishPlay() {
   syncScrollLock();
   scrollCue?.classList.toggle("is-gone", clipIndex > 0 || atClipEnd());
   updateActiveNav();
-  preloadClip(clipIndex + 1);
 }
 
 function loadClip(index, atEnd = false) {
-  return new Promise((resolve, reject) => {
-    const applyHead = () => {
-      video.pause();
-      if (atEnd && video.duration) video.currentTime = Math.max(0, video.duration - 0.04);
-      else video.currentTime = 0;
-    };
-    if (clipIndex === index && video.readyState >= 2) {
-      applyHead();
-      resolve();
-      return;
-    }
-    const onReady = () => {
-      applyHead();
-      resolve();
-    };
-    const onError = () => reject(new Error("Unable to load video"));
-    video.addEventListener("loadeddata", onReady, { once: true });
-    video.addEventListener("error", onError, { once: true });
-    clipIndex = index;
-    video.src = HERO_CLIPS[index];
-    preloadClip(index + 1);
-  });
+  setActiveClip(index, atEnd);
+  return Promise.resolve();
 }
 
 function playCurrentClip() {
@@ -770,8 +831,8 @@ async function start() {
   setupMedalPhysics();
   startBootQuotes();
   try {
-    setBootProgress(12, "Loading…");
-    await loadClip(0);
+    await loadAllClips();
+    setActiveClip(0);
     setBootProgress(100);
     bindVideo();
   } catch (error) {
@@ -783,6 +844,7 @@ async function start() {
 
 window.addEventListener("beforeunload", () => {
   if (playRaf) cancelAnimationFrame(playRaf);
+  clipUrls.forEach((url) => URL.revokeObjectURL(url));
   if (bgm) {
     bgm.pause();
     bgm.src = "";
