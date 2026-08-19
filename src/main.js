@@ -413,7 +413,9 @@ function renderStaticContent() {
 }
 
 const PLAYBACK_RATE = 2;
+const BOOT_READY_COUNT = 4;
 let bootShown = 0;
+let clipReady = [];
 
 function lastClipIndex() {
   return HERO_CLIPS.length - 1;
@@ -441,9 +443,10 @@ function clipBufferedRatio(el) {
 }
 
 function updateBootFromBuffers() {
-  if (!clipVideos.length) return;
+  const needed = clipVideos.slice(0, BOOT_READY_COUNT);
+  if (!needed.length) return;
   const pct =
-    (clipVideos.reduce((sum, el) => sum + clipBufferedRatio(el), 0) / clipVideos.length) * 96;
+    (needed.reduce((sum, el) => sum + clipBufferedRatio(el), 0) / needed.length) * 96;
   bootShown = Math.max(bootShown, pct);
   setBootProgress(bootShown, `${Math.round(bootShown)}%`);
 }
@@ -489,7 +492,8 @@ async function loadHeroClips() {
   bootShown = 0;
   setBootProgress(2, "Loading…");
   setupClipVideos();
-  await Promise.all(clipVideos.map((el, index) => waitForClipReady(el, HERO_CLIPS[index])));
+  clipReady = clipVideos.map((el, index) => waitForClipReady(el, HERO_CLIPS[index]));
+  await Promise.all(clipReady.slice(0, BOOT_READY_COUNT));
   updateBootFromBuffers();
 }
 
@@ -524,9 +528,9 @@ function finishPlay() {
   updateActiveNav();
 }
 
-function loadClip(index, atEnd = false) {
+async function loadClip(index, atEnd = false) {
+  if (clipReady[index]) await clipReady[index];
   setActiveClip(index, atEnd);
-  return Promise.resolve();
 }
 
 function playCurrentClip() {
