@@ -263,6 +263,7 @@ let touchStartY = 0;
 let stepCooldownUntil = 0;
 let playWatch = null;
 let clipVideos = [];
+let clipUrls = [];
 let bgm = null;
 let medalSfx = null;
 let isMuted = localStorage.getItem(MUTE_KEY) === "true";
@@ -413,7 +414,8 @@ function renderStaticContent() {
 }
 
 const PLAYBACK_RATE = 2;
-const BOOT_READY_COUNT = 4;
+const BOOT_READY_COUNT = 3;
+const HERO_BOOT_SIZES = [11954205, 14106458, 12903537];
 let bootShown = 0;
 let clipReady = [];
 
@@ -437,41 +439,62 @@ function syncScrollLock() {
   );
 }
 
-function clipBufferedRatio(el) {
-  if (!el.duration || !el.buffered.length) return 0;
-  return Math.min(1, el.buffered.end(el.buffered.length - 1) / el.duration);
-}
-
-function updateBootFromBuffers() {
-  if (boot.classList.contains("is-done")) return;
-  const needed = clipVideos.slice(0, BOOT_READY_COUNT);
-  if (!needed.length) return;
-  const pct = (needed.reduce((sum, el) => sum + clipBufferedRatio(el), 0) / needed.length) * 100;
-  bootShown = Math.max(bootShown, Math.min(99, pct));
-  setBootProgress(bootShown, `${Math.round(bootShown)}%`);
-}
-
 function waitForClipReady(el, src) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = () => {
       if (settled) return;
       settled = true;
-      el.removeEventListener("progress", onProgress);
       resolve();
     };
-    const onProgress = () => {
-      updateBootFromBuffers();
-      if (clipBufferedRatio(el) >= 0.98) finish();
-    };
     el.addEventListener("canplaythrough", finish, { once: true });
-    el.addEventListener("progress", onProgress);
+    el.addEventListener("loadeddata", finish, { once: true });
     el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
     el.preload = "auto";
     el.muted = true;
     el.playsInline = true;
     el.playbackRate = PLAYBACK_RATE;
     el.src = src;
+  });
+}
+
+async function fetchClipWithProgress(src, expectedSize, onProgress) {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
+  const headerSize = Number(response.headers.get("content-length")) || 0;
+  const totalHint = headerSize || expectedSize || 0;
+  onProgress(0, totalHint);
+  if (!response.body) {
+    const blob = await response.blob();
+    onProgress(blob.size, blob.size);
+    return blob;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    onProgress(received, Math.max(totalHint, received));
+  }
+  const blob = new Blob(chunks, { type: "video/mp4" });
+  onProgress(blob.size, blob.size);
+  return blob;
+}
+
+function attachBlob(el, blob) {
+  const url = URL.createObjectURL(blob);
+  clipUrls.push(url);
+  return new Promise((resolve, reject) => {
+    el.addEventListener("loadeddata", () => resolve(), { once: true });
+    el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
+    el.preload = "auto";
+    el.muted = true;
+    el.playsInline = true;
+    el.playbackRate = PLAYBACK_RATE;
+    el.src = url;
   });
 }
 
@@ -489,18 +512,48 @@ function setupClipVideos() {
 }
 
 async function loadHeroClips() {
-  bootShown = 0;
-  setBootProgress(2, "Loading…");
   setupClipVideos();
-  clipReady = HERO_CLIPS.map((src, index) => {
-    if (index >= BOOT_READY_COUNT) return null;
-    return waitForClipReady(clipVideos[index], src);
-  });
-  await Promise.all(clipReady.slice(0, BOOT_READY_COUNT));
-  setBootProgress(100, "100%");
-  for (let index = BOOT_READY_COUNT; index < HERO_CLIPS.length; index += 1) {
-    clipReady[index] = waitForClipReady(clipVideos[index], HERO_CLIPS[index]).catch(() => {});
+
+  const early = window.__heroBoot;
+  if (early?.onProgress) {
+    early.onProgress((pct) => {
+      bootShown = Math.max(bootShown, pct);
+      setBootProgress(bootShown, `${Math.round(bootShown)}%`);
+    });
+  } else {
+    setBootProgress(0, "0%");
   }
+
+  let blobs;
+  if (early?.blobs) {
+    blobs = await early.blobs;
+  } else {
+    const loaded = Array(BOOT_READY_COUNT).fill(0);
+    const totals = HERO_BOOT_SIZES.slice();
+    const tick = () => {
+      const total = totals.reduce((sum, value) => sum + value, 0);
+      const received = loaded.reduce((sum, value) => sum + value, 0);
+      bootShown = Math.max(bootShown, total ? Math.min(99, (received / total) * 100) : 0);
+      setBootProgress(bootShown, `${Math.round(bootShown)}%`);
+    };
+    blobs = await Promise.all(
+      HERO_CLIPS.slice(0, BOOT_READY_COUNT).map((src, index) =>
+        fetchClipWithProgress(src, HERO_BOOT_SIZES[index], (bytes, total) => {
+          loaded[index] = bytes;
+          if (total) totals[index] = total;
+          tick();
+        }),
+      ),
+    );
+  }
+
+  setBootProgress(100, "100%");
+  await Promise.all(blobs.map((blob, index) => attachBlob(clipVideos[index], blob)));
+
+  clipReady = HERO_CLIPS.map((_, index) => {
+    if (index < BOOT_READY_COUNT) return Promise.resolve();
+    return waitForClipReady(clipVideos[index], HERO_CLIPS[index]).catch(() => {});
+  });
 }
 
 function setActiveClip(index, atEnd = false) {
@@ -830,14 +883,15 @@ function bindVideo() {
 }
 
 async function start() {
+  startBootQuotes();
+  const clipsPromise = loadHeroClips();
   renderStaticContent();
   setupAudio();
   setupMedalPhysics();
-  startBootQuotes();
   try {
-    await loadHeroClips();
+    await clipsPromise;
     setActiveClip(0);
-    setBootProgress(100);
+    setBootProgress(100, "100%");
     bindVideo();
   } catch (error) {
     console.error(error);
@@ -848,6 +902,7 @@ async function start() {
 
 window.addEventListener("beforeunload", () => {
   if (playRaf) cancelAnimationFrame(playRaf);
+  clipUrls.forEach((url) => URL.revokeObjectURL(url));
   if (bgm) {
     bgm.pause();
     bgm.src = "";
