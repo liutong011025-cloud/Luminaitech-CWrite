@@ -522,70 +522,110 @@ function frame() {
   syncFromScroll();
 }
 
-async function fetchWithRetry(src, options = {}, attempts = 2) {
-  let lastError;
-  for (let i = 0; i < attempts; i += 1) {
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 25000);
-    try {
-      const response = await fetch(src, {
-        mode: "cors",
-        credentials: "omit",
-        cache: "no-store",
-        signal: controller.signal,
-        ...options,
-      });
-      if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
-      return response;
-    } catch (error) {
-      lastError = error;
-      await new Promise((resolve) => window.setTimeout(resolve, 400 * (i + 1)));
-    } finally {
-      window.clearTimeout(timer);
-    }
+const EXPECTED_VIDEO_BYTES = 1793004720;
+const VIDEO_MIRRORS = [
+  "https://designscaffold.com/hero-scrub.mp4",
+  "https://ichingtcc.cn/hero-scrub.mp4",
+];
+const FIRST_BYTE_MS = 8000;
+const STALL_MS = 12000;
+
+function isUsableVideoSrc(src) {
+  try {
+    const url = new URL(src, window.location.origin);
+    if (url.hostname === "video.designscaffold.com") return false;
+    if (/\.r2\.dev$/i.test(url.hostname)) return false;
+    return true;
+  } catch {
+    return false;
   }
-  throw lastError;
+}
+
+function videoCandidates(src) {
+  const list = [];
+  const add = (value) => {
+    const next = resolveVideoSrc(value);
+    if (!next || list.includes(next) || !isUsableVideoSrc(next)) return;
+    list.push(next);
+  };
+  add(src);
+  VIDEO_MIRRORS.forEach(add);
+  return list;
+}
+
+function reportDownloadProgress(received, total) {
+  const size = total > 0 ? total : EXPECTED_VIDEO_BYTES;
+  const pct = Math.min(99, (received / size) * 100);
+  const mb = received / (1024 * 1024);
+  setBootProgress(pct, `${Math.round(pct)}% · ${mb.toFixed(0)} MB`);
 }
 
 async function downloadVideoBlob(src) {
-  const response = await fetchWithRetry(src);
-  const total = Number(response.headers.get("content-length")) || 0;
-  if (!response.body) return response.blob();
+  const controller = new AbortController();
+  let gotByte = false;
+  const remote = /^https?:\/\//i.test(src);
+  const firstByteTimer = window.setTimeout(() => {
+    if (!gotByte) controller.abort();
+  }, remote ? FIRST_BYTE_MS : 60000);
+
+  const response = await fetch(src, {
+    mode: "cors",
+    credentials: "omit",
+    cache: "default",
+    signal: controller.signal,
+  }).finally(() => window.clearTimeout(firstByteTimer));
+
+  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
+
+  const headerTotal = Number(response.headers.get("content-length")) || 0;
+  const total = headerTotal || EXPECTED_VIDEO_BYTES;
+  if (!response.body) {
+    const blob = await response.blob();
+    setBootProgress(100);
+    return blob;
+  }
 
   const reader = response.body.getReader();
   const chunks = [];
   let received = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    received += value.byteLength;
-    if (total > 0) {
-      setBootProgress(Math.min(100, (received / total) * 100));
-    } else {
-      setBootProgress(Math.min(99, (received / (1024 * 1024)) * 0.06), `${(received / (1024 * 1024)).toFixed(0)} MB`);
+  let lastTick = 0;
+  let stalled = false;
+  const stall = window.setInterval(() => {
+    if (!gotByte || received === lastTick) {
+      stalled = true;
+      controller.abort();
     }
+    lastTick = received;
+  }, STALL_MS);
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      gotByte = true;
+      chunks.push(value);
+      received += value.byteLength;
+      reportDownloadProgress(received, total);
+    }
+  } finally {
+    window.clearInterval(stall);
+  }
+
+  if (stalled) throw new Error("Video download stalled");
+  if (headerTotal && received < headerTotal * 0.98) {
+    throw new Error(`Video too small: ${received}`);
   }
   setBootProgress(100);
   return new Blob(chunks, { type: "video/mp4" });
 }
 
 async function loadVideoAsBlob(src) {
-  setBootProgress(1, "Connecting…");
-  const candidates = [];
-  const add = (value) => {
-    const next = resolveVideoSrc(value);
-    if (next && !candidates.includes(next)) candidates.push(next);
-  };
-  add(src);
-  if (/^https?:\/\//i.test(src)) {
-    add("https://designscaffold.com/hero-scrub.mp4");
-  }
-
+  setBootProgress(0, "Connecting…");
+  const candidates = videoCandidates(src);
   let lastError;
   for (const candidate of candidates) {
     try {
-      setBootProgress(1, "Connecting…");
+      setBootProgress(0, "Connecting…");
       return await downloadVideoBlob(candidate);
     } catch (error) {
       lastError = error;
@@ -812,3 +852,4 @@ window.addEventListener("beforeunload", () => {
 });
 
 start();
+
