@@ -6,10 +6,8 @@
     <title>CWrite — Luminaitech</title>
     <script>
       (function () {
-        var clips = ["/hero-1.mp4", "/hero-2.mp4", "/hero-3.mp4"];
-        var sizes = [11954205, 14106458, 12903537];
-        var loaded = [0, 0, 0];
-        var totals = sizes.slice();
+        var src = "/hero-1.mp4";
+        var size = 11954205;
         var pct = 0;
         var listeners = [];
 
@@ -21,49 +19,35 @@
           for (var i = 0; i < listeners.length; i += 1) listeners[i](pct);
         }
 
-        function tick() {
-          var received = loaded[0] + loaded[1] + loaded[2];
-          var total = totals[0] + totals[1] + totals[2];
-          pct = total ? Math.min(99, (received / total) * 100) : 0;
-          paint();
-        }
-
-        var blobs = clips.map(function (src, index) {
-          return new Promise(function (resolve, reject) {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", src);
-            xhr.responseType = "blob";
-            xhr.onprogress = function (event) {
-              loaded[index] = event.loaded;
-              totals[index] =
-                event.lengthComputable && event.total
-                  ? event.total
-                  : Math.max(sizes[index], event.loaded);
-              tick();
-            };
-            xhr.onload = function () {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                loaded[index] = xhr.response.size;
-                totals[index] = xhr.response.size;
-                tick();
-                resolve(xhr.response);
-                return;
-              }
-              reject(new Error("Unable to load video"));
-            };
-            xhr.onerror = function () {
-              reject(new Error("Unable to load video"));
-            };
-            xhr.send();
-          });
+        var blob = new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", src);
+          xhr.responseType = "blob";
+          xhr.onprogress = function (event) {
+            var total =
+              event.lengthComputable && event.total
+                ? event.total
+                : Math.max(size, event.loaded);
+            pct = Math.min(99, (event.loaded / total) * 100);
+            paint();
+          };
+          xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              pct = 100;
+              paint();
+              resolve(xhr.response);
+              return;
+            }
+            reject(new Error("Unable to load video"));
+          };
+          xhr.onerror = function () {
+            reject(new Error("Unable to load video"));
+          };
+          xhr.send();
         });
 
         window.__heroBoot = {
-          blobs: Promise.all(blobs).then(function (files) {
-            pct = 100;
-            paint();
-            return files;
-          }),
+          blob: blob,
           onProgress: function (fn) {
             listeners.push(fn);
             fn(pct);
