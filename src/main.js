@@ -515,10 +515,60 @@ function frame() {
   syncFromScroll();
 }
 
+async function fetchWithRetry(src, options = {}, attempts = 3) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      const response = await fetch(src, {
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store",
+        ...options,
+      });
+      if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
+      return response;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => window.setTimeout(resolve, 600 * (i + 1)));
+    }
+  }
+  throw lastError;
+}
+
+async function loadVideoByRanges(src) {
+  const head = await fetchWithRetry(src, { method: "HEAD" });
+  const total = Number(head.headers.get("content-length")) || 0;
+  if (!total) throw new Error("Missing content length");
+
+  const chunkSize = 32 * 1024 * 1024;
+  const parts = [];
+  let received = 0;
+  for (let start = 0; start < total; start += chunkSize) {
+    const end = Math.min(start + chunkSize - 1, total - 1);
+    const response = await fetchWithRetry(src, {
+      headers: { Range: `bytes=${start}-${end}` },
+    });
+    const buffer = await response.arrayBuffer();
+    parts.push(new Uint8Array(buffer));
+    received += buffer.byteLength;
+    setBootProgress(Math.min(100, (received / total) * 100));
+  }
+  setBootProgress(100);
+  return new Blob(parts, { type: "video/mp4" });
+}
+
 async function loadVideoAsBlob(src) {
   setBootProgress(0);
-  const response = await fetch(src, { mode: "cors", credentials: "omit" });
-  if (!response.ok) throw new Error(`Unable to load video: ${response.status}`);
+  const isRemote = /^https?:\/\//i.test(src);
+  if (isRemote) {
+    try {
+      return await loadVideoByRanges(src);
+    } catch (error) {
+      console.warn("Chunked download failed, retrying as one file", error);
+    }
+  }
+
+  const response = await fetchWithRetry(src);
   const total = Number(response.headers.get("content-length")) || 0;
   if (!response.body) return response.blob();
 
@@ -726,56 +776,15 @@ function bindVideo() {
   syncFromScroll();
 }
 
-function attachRemote(src) {
-  setBootProgress(8, "Connecting…");
-  video.preload = "auto";
-  video.src = src;
-  video.load();
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (ok, err) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      if (ok) resolve();
-      else reject(err || new Error("Video decode failed"));
-    };
-    const onMeta = () => {
-      setBootProgress(70, "Buffering…");
-    };
-    const onReady = () => {
-      setBootProgress(100);
-      finish(true);
-    };
-    const onError = () => finish(false, new Error("Video decode failed"));
-    const cleanup = () => {
-      video.removeEventListener("loadedmetadata", onMeta);
-      video.removeEventListener("loadeddata", onReady);
-      video.removeEventListener("error", onError);
-    };
-    video.addEventListener("loadedmetadata", onMeta);
-    video.addEventListener("loadeddata", onReady, { once: true });
-    video.addEventListener("error", onError, { once: true });
-    window.setTimeout(() => {
-      if (!settled && video.readyState >= 1) finish(true);
-    }, 8000);
-  });
-}
-
 async function start() {
   renderStaticContent();
   setupAudio();
   setupMedalPhysics();
   startBootQuotes();
   try {
-    const isRemote = /^https?:\/\//i.test(VIDEO_SRC);
-    if (isRemote) {
-      await attachRemote(VIDEO_SRC);
-    } else {
-      const blob = await loadVideoAsBlob(VIDEO_SRC);
-      setBootProgress(100, "Decoding…");
-      await attachSource(blob);
-    }
+    const blob = await loadVideoAsBlob(VIDEO_SRC);
+    setBootProgress(100, "Decoding…");
+    await attachSource(blob);
     bindVideo();
   } catch (error) {
     console.error(error);
