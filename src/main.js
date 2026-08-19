@@ -414,8 +414,7 @@ function renderStaticContent() {
 }
 
 const PLAYBACK_RATE = 2;
-const BOOT_READY_COUNT = 3;
-const HERO_BOOT_SIZES = [11954205, 14106458, 12903537];
+const BOOT_READY_COUNT = 1;
 let bootShown = 0;
 let clipReady = [];
 
@@ -439,6 +438,14 @@ function syncScrollLock() {
   );
 }
 
+function primeClip(el, src) {
+  el.preload = "auto";
+  el.muted = true;
+  el.playsInline = true;
+  el.playbackRate = PLAYBACK_RATE;
+  if (el.getAttribute("src") !== src) el.src = src;
+}
+
 function waitForClipReady(el, src) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -450,11 +457,7 @@ function waitForClipReady(el, src) {
     el.addEventListener("canplaythrough", finish, { once: true });
     el.addEventListener("loadeddata", finish, { once: true });
     el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
-    el.preload = "auto";
-    el.muted = true;
-    el.playsInline = true;
-    el.playbackRate = PLAYBACK_RATE;
-    el.src = src;
+    primeClip(el, src);
   });
 }
 
@@ -485,16 +488,13 @@ async function fetchClipWithProgress(src, expectedSize, onProgress) {
 }
 
 function attachBlob(el, blob) {
-  const url = URL.createObjectURL(blob);
+  const file = blob.type ? blob : new Blob([blob], { type: "video/mp4" });
+  const url = URL.createObjectURL(file);
   clipUrls.push(url);
   return new Promise((resolve, reject) => {
     el.addEventListener("loadeddata", () => resolve(), { once: true });
     el.addEventListener("error", () => reject(new Error("Unable to load video")), { once: true });
-    el.preload = "auto";
-    el.muted = true;
-    el.playsInline = true;
-    el.playbackRate = PLAYBACK_RATE;
-    el.src = url;
+    primeClip(el, url);
   });
 }
 
@@ -513,7 +513,6 @@ function setupClipVideos() {
 
 async function loadHeroClips() {
   setupClipVideos();
-
   const early = window.__heroBoot;
   if (early?.onProgress) {
     early.onProgress((pct) => {
@@ -524,35 +523,20 @@ async function loadHeroClips() {
     setBootProgress(0, "0%");
   }
 
-  let blobs;
-  if (early?.blobs) {
-    blobs = await early.blobs;
-  } else {
-    const loaded = Array(BOOT_READY_COUNT).fill(0);
-    const totals = HERO_BOOT_SIZES.slice();
-    const tick = () => {
-      const total = totals.reduce((sum, value) => sum + value, 0);
-      const received = loaded.reduce((sum, value) => sum + value, 0);
-      bootShown = Math.max(bootShown, total ? Math.min(99, (received / total) * 100) : 0);
-      setBootProgress(bootShown, `${Math.round(bootShown)}%`);
-    };
-    blobs = await Promise.all(
-      HERO_CLIPS.slice(0, BOOT_READY_COUNT).map((src, index) =>
-        fetchClipWithProgress(src, HERO_BOOT_SIZES[index], (bytes, total) => {
-          loaded[index] = bytes;
-          if (total) totals[index] = total;
-          tick();
-        }),
-      ),
-    );
-  }
+  const blob = early?.blob
+    ? await early.blob
+    : await fetchClipWithProgress(HERO_CLIPS[0], 11954205, (loaded, total) => {
+        const pct = total ? Math.min(99, (loaded / total) * 100) : 0;
+        bootShown = Math.max(bootShown, pct);
+        setBootProgress(bootShown, `${Math.round(bootShown)}%`);
+      });
 
   setBootProgress(100, "100%");
-  await Promise.all(blobs.map((blob, index) => attachBlob(clipVideos[index], blob)));
+  await attachBlob(clipVideos[0], blob);
 
-  clipReady = HERO_CLIPS.map((_, index) => {
+  clipReady = HERO_CLIPS.map((src, index) => {
     if (index < BOOT_READY_COUNT) return Promise.resolve();
-    return waitForClipReady(clipVideos[index], HERO_CLIPS[index]).catch(() => {});
+    return waitForClipReady(clipVideos[index], src).catch(() => {});
   });
 }
 
