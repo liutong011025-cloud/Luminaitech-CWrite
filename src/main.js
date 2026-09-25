@@ -150,7 +150,7 @@ const TEAM_TOP = [
   {
     name: "Dr. YANG, Yin Nicole (PhD)",
     role: "Principal Investigator",
-    subtitle: "Research Assistant Professor",
+    subtitle: "Assistant Professor",
     image: "/about/Nicole.webp",
     bio: [
       "Dr Yang is an interdisciplinary researcher of cognitive science, language education, and educational technology. Her work bridges multiple disciplines, leveraging her diverse academic background to explore innovative approaches to teaching and learning in technology-enhanced environments. Drawing upon contemporary cognitive science and learning theories, her research explores the intersection of human cognition, AI, and instructional design to understand and enhance how people learn.",
