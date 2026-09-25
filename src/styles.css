@@ -917,7 +917,7 @@ body.is-intro-locked {
 
 .farm-cabinet {
   margin: 0 auto;
-  max-width: 52rem;
+  max-width: 68rem;
   filter: drop-shadow(0 28px 40px rgba(0, 0, 0, 0.45));
 }
 
@@ -948,8 +948,9 @@ body.is-intro-locked {
 
 .farm-cabinet-glass {
   position: relative;
-  min-height: 28rem;
-  padding: 2.25rem 1.5rem 1.5rem;
+  height: 25rem;
+  overflow: hidden;
+  padding: 2.25rem 1.75rem 1.15rem;
   border: 4px solid #2a1810;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 40%),
@@ -974,29 +975,37 @@ body.is-intro-locked {
 
 .medal-rack {
   display: flex;
-  flex-wrap: wrap;
   justify-content: center;
-  gap: 2.5rem 3.5rem;
-  padding: 1.75rem 0.5rem 0.5rem;
-  min-height: 22rem;
+  align-items: flex-start;
+  gap: 2.85rem;
+  padding: 1.25rem 15.5rem 0.2rem;
+  min-height: 0;
 }
 
 .medal-slot {
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
-  width: min(36rem, 100%);
-  padding-top: 0.4rem;
+  flex: 0 0 13.25rem;
+  width: 13.25rem;
+  padding-top: 0.35rem;
   outline: none;
   cursor: default;
+  z-index: 1;
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.medal-slot:has(.medal-hang:hover),
+.medal-slot:has(.medal-hang:focus-within) {
+  z-index: 3;
+}
+
+.medal-slot:has(.medal-hang:hover) ~ .medal-slot,
+.medal-slot:has(.medal-hang:focus-within) ~ .medal-slot {
+  transform: translateX(12.9rem);
 }
 
 .medal-hang {
   position: relative;
-  flex: 0 0 min(17rem, 58vw);
-  width: min(17rem, 58vw);
+  width: 100%;
   cursor: pointer;
   outline: none;
 }
@@ -1118,27 +1127,27 @@ body.is-intro-locked {
 }
 
 .medal-info {
-  flex: 1 1 12rem;
-  max-width: 16rem;
-  padding: 1rem 1.05rem;
+  position: absolute;
+  top: 5.35rem;
+  left: calc(100% + 0.7rem);
+  z-index: 4;
+  width: 14.2rem;
+  padding: 0.85rem 0.95rem;
   border: 3px solid #2a1810;
   border-radius: 0.85rem;
-  background: rgba(243, 230, 200, 0.94);
+  background: rgba(243, 230, 200, 0.96);
   color: #2a1810;
   text-align: left;
   box-shadow: 4px 4px 0 #2a1810;
   opacity: 0;
-  transform: translateX(0.65rem);
   pointer-events: none;
-  transition:
-    opacity 0.28s ease,
-    transform 0.28s ease;
+  transition: opacity 0.18s ease;
 }
 
 .medal-slot:has(.medal-hang:hover) .medal-info,
 .medal-slot:has(.medal-hang:focus-within) .medal-info {
   opacity: 1;
-  transform: translateX(0);
+  transition-delay: 0.1s;
 }
 
 .medal-info-kicker {
@@ -1165,7 +1174,7 @@ body.is-intro-locked {
 }
 
 .farm-hint {
-  margin: 1.25rem 0 0;
+  margin: 1.6rem 0 0;
   font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1215,30 +1224,55 @@ body.is-intro-locked {
   color: rgba(15, 23, 42, 0.72);
 }
 
-@media (max-width: 760px) {
-  .farm-cabinet-glass {
-    min-height: 24rem;
-    padding: 2rem 0.85rem 1.15rem;
-  }
-
+@media (max-width: 1180px) {
   .medal-rack {
-    min-height: 18rem;
+    gap: 2.15rem;
+    padding-inline: 12.4rem;
   }
 
   .medal-slot {
-    flex-direction: column;
-    gap: 0.85rem;
+    flex-basis: 11.4rem;
+    width: 11.4rem;
   }
 
   .medal-info {
-    max-width: min(17rem, 58vw);
-    text-align: center;
-    transform: translateY(0.45rem);
+    top: 4.7rem;
+    width: 11.4rem;
   }
 
-  .medal-slot:has(.medal-hang:hover) .medal-info,
-  .medal-slot:has(.medal-hang:focus-within) .medal-info {
-    transform: translateY(0);
+  .medal-slot:has(.medal-hang:hover) ~ .medal-slot,
+  .medal-slot:has(.medal-hang:focus-within) ~ .medal-slot {
+    transform: translateX(10.7rem);
+  }
+}
+
+@media (max-width: 760px) {
+  .farm-cabinet-glass {
+    height: 34rem;
+    padding: 1.8rem 0.85rem 1rem;
+  }
+
+  .medal-rack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+    padding: 1.1rem 0 0.2rem 0.35rem;
+  }
+
+  .medal-slot {
+    flex-basis: auto;
+    width: 10.4rem;
+  }
+
+  .medal-slot:has(.medal-hang:hover) ~ .medal-slot,
+  .medal-slot:has(.medal-hang:focus-within) ~ .medal-slot {
+    transform: none;
+  }
+
+  .medal-info {
+    top: 4.15rem;
+    left: calc(100% + 0.55rem);
+    width: min(11.2rem, calc(100vw - 14.5rem));
   }
 }
 
